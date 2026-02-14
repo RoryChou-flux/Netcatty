@@ -858,7 +858,14 @@ function getAllowedRendererOrigins() {
       const u = new URL(devServerUrl);
       origins.add(u.origin);
       // Vite often binds to 0.0.0.0, but Chromium navigates via localhost.
-      if (u.hostname === "0.0.0.0" || u.hostname === "127.0.0.1" || u.hostname === "::1") {
+      if (
+        u.hostname === "0.0.0.0" ||
+        u.hostname === "127.0.0.1" ||
+        u.hostname === "::1" ||
+        u.hostname === "[::1]" ||
+        u.hostname === "::" ||
+        u.hostname === "[::]"
+      ) {
         u.hostname = "localhost";
         origins.add(u.origin);
       }
