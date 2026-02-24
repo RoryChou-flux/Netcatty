@@ -309,9 +309,13 @@ function App({ settings }: { settings: SettingsState }) {
     onUpdateManagedSources: updateManagedSources,
   });
 
+  // Stable ref wrapper: keeps identity constant so TopTabs memo comparator
+  // can safely exclude onSyncNow without risking stale closures.
+  const syncNowRef = useRef(handleSyncNow);
+  syncNowRef.current = handleSyncNow;
   const handleSyncNowManual = useCallback(() => {
-    return handleSyncNow({ trigger: 'manual' });
-  }, [handleSyncNow]);
+    return syncNowRef.current({ trigger: 'manual' });
+  }, []);
 
   // Update check hook - checks for new versions on startup
   const { updateState, openReleasePage, dismissUpdate } = useUpdateCheck();
@@ -1080,12 +1084,16 @@ function App({ settings }: { settings: SettingsState }) {
 
   const { openSettingsWindow } = useWindowControls();
 
+  // Stable ref wrapper: keeps identity constant so TopTabs memo comparator
+  // can safely exclude onOpenSettings without risking stale closures.
+  const openSettingsRef = useRef(openSettingsWindow);
+  openSettingsRef.current = openSettingsWindow;
   const handleOpenSettings = useCallback(() => {
     void (async () => {
-      const opened = await openSettingsWindow();
+      const opened = await openSettingsRef.current();
       if (!opened) toast.error(t('toast.settingsUnavailable'), t('common.settings'));
     })();
-  }, [openSettingsWindow, t]);
+  }, [t]);
 
   const handleEndSessionDrag = useCallback(() => {
     setDraggingSessionId(null);
