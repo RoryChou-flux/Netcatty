@@ -2,10 +2,22 @@ import type { SyncPayload } from "./sync";
 
 export const CREDENTIAL_ENCRYPTION_PREFIX = "enc:v1:";
 
+/**
+ * Base64 pattern: only allows A-Z, a-z, 0-9, +, / and trailing = padding.
+ * safeStorage ciphertext is always non-empty base64, so we require at least
+ * one character after the prefix to avoid matching the bare prefix itself.
+ */
+const BASE64_RE = /^[A-Za-z0-9+/]+=*$/;
+
 export const isEncryptedCredentialPlaceholder = (
   value: string | undefined | null,
-): value is string =>
-  typeof value === "string" && value.startsWith(CREDENTIAL_ENCRYPTION_PREFIX);
+): value is string => {
+  if (typeof value !== "string" || !value.startsWith(CREDENTIAL_ENCRYPTION_PREFIX)) {
+    return false;
+  }
+  const payload = value.slice(CREDENTIAL_ENCRYPTION_PREFIX.length);
+  return payload.length > 0 && BASE64_RE.test(payload);
+};
 
 /**
  * Strip enc:v1: placeholders from a single credential value.
