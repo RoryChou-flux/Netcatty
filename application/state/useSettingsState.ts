@@ -27,6 +27,8 @@ import {
   STORAGE_KEY_SESSION_LOGS_FORMAT,
   STORAGE_KEY_TOGGLE_WINDOW_HOTKEY,
   STORAGE_KEY_CLOSE_TO_TRAY,
+  STORAGE_KEY_TAB_ORIENTATION,
+  STORAGE_KEY_TAB_BAR_SIZE,
 } from '../../infrastructure/config/storageKeys';
 import { DEFAULT_UI_LOCALE, resolveSupportedLocale } from '../../infrastructure/config/i18n';
 import { TERMINAL_THEMES } from '../../infrastructure/config/terminalThemes';
@@ -54,6 +56,16 @@ const DEFAULT_SFTP_DOUBLE_CLICK_BEHAVIOR: 'open' | 'transfer' = 'open';
 const DEFAULT_SFTP_AUTO_SYNC = false;
 const DEFAULT_SFTP_SHOW_HIDDEN_FILES = false;
 const DEFAULT_SFTP_USE_COMPRESSED_UPLOAD = true;
+
+// Tab Bar Layout defaults
+const DEFAULT_TAB_ORIENTATION: 'horizontal' | 'vertical' = 'horizontal';
+const DEFAULT_TAB_BAR_SIZE_HORIZONTAL = 32;
+const DEFAULT_TAB_BAR_SIZE_VERTICAL = 200;
+
+const clampTabBarSize = (size: number, orientation: 'horizontal' | 'vertical'): number => {
+  if (orientation === 'vertical') return Math.max(140, Math.min(400, size));
+  return Math.max(32, Math.min(64, size));
+};
 
 // Editor defaults
 const DEFAULT_EDITOR_WORD_WRAP = false;
@@ -253,6 +265,21 @@ export const useSettingsState = () => {
     return stored === 'true';
   });
   const [hotkeyRegistrationError, setHotkeyRegistrationError] = useState<string | null>(null);
+
+  // Tab Bar Layout
+  const [tabBarOrientation, setTabBarOrientation] = useState<'horizontal' | 'vertical'>(() => {
+    const stored = readStoredString(STORAGE_KEY_TAB_ORIENTATION);
+    return (stored === 'horizontal' || stored === 'vertical') ? stored : DEFAULT_TAB_ORIENTATION;
+  });
+  const tabBarOrientationRef = useRef(tabBarOrientation);
+  tabBarOrientationRef.current = tabBarOrientation;
+  const [tabBarSize, setTabBarSize] = useState<number>(() => {
+    const storedOrientation = readStoredString(STORAGE_KEY_TAB_ORIENTATION);
+    const orientation = (storedOrientation === 'horizontal' || storedOrientation === 'vertical') ? storedOrientation : DEFAULT_TAB_ORIENTATION;
+    const stored = localStorageAdapter.readNumber(STORAGE_KEY_TAB_BAR_SIZE);
+    if (stored && stored > 0) return clampTabBarSize(stored, orientation);
+    return orientation === 'vertical' ? DEFAULT_TAB_BAR_SIZE_VERTICAL : DEFAULT_TAB_BAR_SIZE_HORIZONTAL;
+  });
   const incomingTerminalSettingsSignatureRef = useRef<string | null>(null);
   const localTerminalSettingsVersionRef = useRef(0);
   const broadcastedLocalTerminalSettingsVersionRef = useRef(0);
@@ -419,6 +446,15 @@ export const useSettingsState = () => {
       }
       if (key === STORAGE_KEY_HOTKEY_RECORDING && typeof value === 'boolean') {
         setIsHotkeyRecordingState(value);
+      }
+      if (key === STORAGE_KEY_TAB_ORIENTATION && typeof value === 'string') {
+        if (value === 'horizontal' || value === 'vertical') {
+          tabBarOrientationRef.current = value;
+          setTabBarOrientation(value);
+        }
+      }
+      if (key === STORAGE_KEY_TAB_BAR_SIZE && typeof value === 'number') {
+        setTabBarSize(clampTabBarSize(value, tabBarOrientationRef.current));
       }
     });
     return () => {
@@ -714,6 +750,24 @@ export const useSettingsState = () => {
     }
   }, [closeToTray, notifySettingsChanged]);
 
+  // Persist and sync tab bar orientation
+  useEffect(() => {
+    localStorageAdapter.writeString(STORAGE_KEY_TAB_ORIENTATION, tabBarOrientation);
+    notifySettingsChanged(STORAGE_KEY_TAB_ORIENTATION, tabBarOrientation);
+  }, [tabBarOrientation, notifySettingsChanged]);
+
+  // Persist and sync tab bar size
+  useEffect(() => {
+    localStorageAdapter.writeNumber(STORAGE_KEY_TAB_BAR_SIZE, tabBarSize);
+    notifySettingsChanged(STORAGE_KEY_TAB_BAR_SIZE, tabBarSize);
+  }, [tabBarSize, notifySettingsChanged]);
+
+  // When switching orientation, reset size to default
+  const handleSetTabBarOrientation = useCallback((orientation: 'horizontal' | 'vertical') => {
+    setTabBarOrientation(orientation);
+    setTabBarSize(orientation === 'vertical' ? DEFAULT_TAB_BAR_SIZE_VERTICAL : DEFAULT_TAB_BAR_SIZE_HORIZONTAL);
+  }, []);
+
   // Get merged key bindings (defaults + custom overrides)
   const keyBindings = useMemo((): KeyBinding[] => {
     return DEFAULT_KEY_BINDINGS.map(binding => {
@@ -851,5 +905,10 @@ export const useSettingsState = () => {
     closeToTray,
     setCloseToTray,
     hotkeyRegistrationError,
+    // Tab Bar Layout
+    tabBarOrientation,
+    setTabBarOrientation: handleSetTabBarOrientation,
+    tabBarSize,
+    setTabBarSize,
   };
 };

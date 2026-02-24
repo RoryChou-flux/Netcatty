@@ -25,6 +25,8 @@ export default function SettingsAppearanceTab(props: {
   setUiLanguage: (language: string) => void;
   customCSS: string;
   setCustomCSS: (css: string) => void;
+  tabBarOrientation: "horizontal" | "vertical";
+  setTabBarOrientation: (orientation: "horizontal" | "vertical") => void;
 }) {
   const { t } = useI18n();
   const availableUIFonts = useAvailableUIFonts();
@@ -45,6 +47,8 @@ export default function SettingsAppearanceTab(props: {
     setUiLanguage,
     customCSS,
     setCustomCSS,
+    tabBarOrientation,
+    setTabBarOrientation,
   } = props;
 
   const getHslStyle = useCallback((hsl: string) => ({ backgroundColor: `hsl(${hsl})` }), []);
@@ -145,6 +149,24 @@ export default function SettingsAppearanceTab(props: {
             value={uiFontFamilyId}
             fonts={availableUIFonts}
             onChange={(v) => setUiFontFamilyId(v)}
+            className="w-48"
+          />
+        </SettingRow>
+      </div>
+
+      <SectionHeader title={t("settings.appearance.tabBar")} />
+      <div className="space-y-0 divide-y divide-border rounded-lg border bg-card px-4">
+        <SettingRow
+          label={t("settings.appearance.tabBar.orientation")}
+          description={t("settings.appearance.tabBar.orientation.desc")}
+        >
+          <Select
+            value={tabBarOrientation}
+            options={[
+              { value: "horizontal", label: t("settings.appearance.tabBar.horizontal") },
+              { value: "vertical", label: t("settings.appearance.tabBar.vertical") },
+            ]}
+            onChange={(v) => setTabBarOrientation(v as "horizontal" | "vertical")}
             className="w-48"
           />
         </SettingRow>

@@ -16,6 +16,7 @@ import { matchesKeyBinding } from './domain/models';
 import { resolveHostAuth } from './domain/sshAuth';
 import { netcattyBridge } from './infrastructure/services/netcattyBridge';
 import { TopTabs } from './components/TopTabs';
+import { ThinTitlebar } from './components/ThinTitlebar';
 import { Button } from './components/ui/button';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from './components/ui/dialog';
 import { Input } from './components/ui/input';
@@ -181,6 +182,10 @@ function App({ settings }: { settings: SettingsState }) {
     sessionLogsEnabled,
     sessionLogsDir,
     sessionLogsFormat,
+    tabBarOrientation,
+    setTabBarOrientation,
+    tabBarSize,
+    setTabBarSize,
   } = settings;
 
   const {
@@ -1116,31 +1121,42 @@ function App({ settings }: { settings: SettingsState }) {
 
   return (
     <div className="flex flex-col h-screen text-foreground font-sans netcatty-shell" onContextMenu={handleRootContextMenu}>
-      <TopTabs
-        theme={theme}
-        sessions={sessions}
-        orphanSessions={orphanSessions}
-        workspaces={workspaces}
-        logViews={logViews}
-        orderedTabs={orderedTabs}
-        draggingSessionId={draggingSessionId}
-        isMacClient={isMacClient}
-        onCloseSession={closeSession}
-        onRenameSession={startSessionRename}
-        onCopySession={copySession}
-        onRenameWorkspace={startWorkspaceRename}
-        onCloseWorkspace={closeWorkspace}
-        onCloseLogView={closeLogView}
-        onOpenQuickSwitcher={handleOpenQuickSwitcher}
-        onToggleTheme={handleToggleTheme}
-        onOpenSettings={handleOpenSettings}
-        onSyncNow={handleSyncNowManual}
-        onStartSessionDrag={setDraggingSessionId}
-        onEndSessionDrag={handleEndSessionDrag}
-        onReorderTabs={reorderTabs}
-      />
+      {/* Thin titlebar for vertical mode */}
+      {tabBarOrientation === 'vertical' && <ThinTitlebar isMacClient={isMacClient} />}
 
-      <div className="flex-1 relative min-h-0">
+      <div className={cn(
+        "flex-1 flex min-h-0",
+        tabBarOrientation === 'vertical' ? "flex-row" : "flex-col"
+      )}>
+        <TopTabs
+          theme={theme}
+          sessions={sessions}
+          orphanSessions={orphanSessions}
+          workspaces={workspaces}
+          logViews={logViews}
+          orderedTabs={orderedTabs}
+          draggingSessionId={draggingSessionId}
+          isMacClient={isMacClient}
+          orientation={tabBarOrientation}
+          barSize={tabBarSize}
+          onBarSizeChange={setTabBarSize}
+          onOrientationChange={setTabBarOrientation}
+          onCloseSession={closeSession}
+          onRenameSession={startSessionRename}
+          onCopySession={copySession}
+          onRenameWorkspace={startWorkspaceRename}
+          onCloseWorkspace={closeWorkspace}
+          onCloseLogView={closeLogView}
+          onOpenQuickSwitcher={handleOpenQuickSwitcher}
+          onToggleTheme={handleToggleTheme}
+          onOpenSettings={handleOpenSettings}
+          onSyncNow={handleSyncNowManual}
+          onStartSessionDrag={setDraggingSessionId}
+          onEndSessionDrag={handleEndSessionDrag}
+          onReorderTabs={reorderTabs}
+        />
+
+        <div className="flex-1 relative min-h-0">
         <VaultViewContainer>
           <VaultView
             hosts={hosts}
@@ -1240,6 +1256,7 @@ function App({ settings }: { settings: SettingsState }) {
             />
           );
         })}
+      </div>
       </div>
 
       {isQuickSwitcherOpen && (

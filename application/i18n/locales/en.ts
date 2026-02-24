@@ -1230,6 +1230,15 @@ const en: Messages = {
   'tabs.logPrefix': 'Log:',
   'tabs.logLocal': 'Local',
   'tabs.copyTab': 'Copy Tab',
+  'tabs.switchToVertical': 'Switch to Sidebar Mode',
+  'tabs.switchToHorizontal': 'Switch to Top Bar Mode',
+
+  // Settings > Appearance > Tab Bar
+  'settings.appearance.tabBar': 'Tab Bar',
+  'settings.appearance.tabBar.orientation': 'Tab Bar Position',
+  'settings.appearance.tabBar.orientation.desc': 'Choose where the tab bar is displayed',
+  'settings.appearance.tabBar.horizontal': 'Top (Horizontal)',
+  'settings.appearance.tabBar.vertical': 'Sidebar (Vertical)',
   'keychain.edit.labelRequired': 'Label *',
   'keychain.edit.keyLabelPlaceholder': 'Key label',
   'keychain.edit.privateKeyRequired': 'Private key *',

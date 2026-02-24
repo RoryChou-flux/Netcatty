@@ -1216,6 +1216,15 @@ const zhCN: Messages = {
   'tabs.logPrefix': '日志：',
   'tabs.logLocal': '本地',
   'tabs.copyTab': '复制标签页',
+  'tabs.switchToVertical': '切换为侧边栏模式',
+  'tabs.switchToHorizontal': '切换为顶部栏模式',
+
+  // Settings > Appearance > Tab Bar
+  'settings.appearance.tabBar': '标签栏',
+  'settings.appearance.tabBar.orientation': '标签栏位置',
+  'settings.appearance.tabBar.orientation.desc': '选择标签栏的显示位置',
+  'settings.appearance.tabBar.horizontal': '顶部（横向）',
+  'settings.appearance.tabBar.vertical': '侧边栏（纵向）',
   'keychain.edit.labelRequired': 'Label *',
   'keychain.edit.keyLabelPlaceholder': '密钥 Label',
   'keychain.edit.privateKeyRequired': '私钥 *',

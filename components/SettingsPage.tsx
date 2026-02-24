@@ -164,6 +164,8 @@ const SettingsPageContent: React.FC<{ settings: SettingsState }> = ({ settings }
                             setUiLanguage={settings.setUiLanguage}
                             customCSS={settings.customCSS}
                             setCustomCSS={settings.setCustomCSS}
+                            tabBarOrientation={settings.tabBarOrientation}
+                            setTabBarOrientation={settings.setTabBarOrientation}
                         />
                     )}
 
