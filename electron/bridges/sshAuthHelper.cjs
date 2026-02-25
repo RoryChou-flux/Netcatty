@@ -190,10 +190,15 @@ async function findAllDefaultPrivateKeys(options = {}) {
   // If only simple auth methods and no fallback keys needed, use array-based handler
   if (hasExplicitAuth && !hasFallbackOptions) {
     const authMethods = [];
-    if (effectiveAgent) authMethods.push("agent");
-    if (privateKey) authMethods.push("publickey");
-    if (password) authMethods.push("password");
-    authMethods.push("keyboard-interactive");
+    if (isPasswordOnly) {
+      authMethods.push("keyboard-interactive");
+      authMethods.push("password");
+    } else {
+      if (effectiveAgent) authMethods.push("agent");
+      if (privateKey) authMethods.push("publickey");
+      if (password) authMethods.push("password");
+      authMethods.push("keyboard-interactive");
+    }
     
     return {
       authHandler: authMethods,
@@ -205,17 +210,19 @@ async function findAllDefaultPrivateKeys(options = {}) {
    
   // Build comprehensive authMethods array with all auth options
   // Order depends on what user explicitly configured:
-  // - Password-only: password -> agent -> default keys -> keyboard-interactive
+  // - Password-only: keyboard-interactive -> password -> agent -> default keys
   // - Key-only: user key -> password -> agent -> default keys -> keyboard-interactive  
   // - Agent configured: agent -> user key -> password -> default keys -> keyboard-interactive
   // - No explicit auth: agent -> default keys -> keyboard-interactive
   const authMethods = [];
   
   if (isPasswordOnly) {
-    // Password-only: password first, then fallbacks
+    // keyboard-interactive first: many bastion/2FA setups expect password + OTP
+    // via interactive prompts. Starting with "password" can trigger duplicate challenges.
+    authMethods.push({ type: "keyboard-interactive", id: "keyboard-interactive" });
     authMethods.push({ type: "password", id: "password" });
     
-    // Add agent and default keys AFTER password as fallback
+    // Add agent and default keys after password as fallback
     if (sshAgentSocket) {
       authMethods.push({ type: "agent", id: "agent" });
     }
@@ -308,8 +315,10 @@ async function findAllDefaultPrivateKeys(options = {}) {
     });
   }
   
-  // Keyboard-interactive as last resort
-  authMethods.push({ type: "keyboard-interactive", id: "keyboard-interactive" });
+  // Keyboard-interactive as last resort (if not already present)
+  if (!authMethods.some((m) => m.type === "keyboard-interactive")) {
+    authMethods.push({ type: "keyboard-interactive", id: "keyboard-interactive" });
+  }
    
   console.log(`${logPrefix} Auth methods configured`, { 
       isPasswordOnly,

@@ -47,14 +47,50 @@ export const KeyboardInteractiveModal: React.FC<KeyboardInteractiveModalProps> =
   const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const getAutofillPasswordIndex = useCallback((prompts: KeyboardInteractivePrompt[]) => {
+    const passwordPromptPattern = /password|passphrase|passwd|密码|口令/i;
+    const oneTimeCodePattern = /otp|token|verification|verify|\bcode\b|验证码|动态码|二次验证|双因素|2fa|mfa/i;
+
+    for (let i = 0; i < prompts.length; i++) {
+      const prompt = prompts[i];
+      if (prompt.echo) continue;
+      const text = (prompt.prompt || "").toLowerCase();
+      if (passwordPromptPattern.test(text) && !oneTimeCodePattern.test(text)) {
+        return i;
+      }
+    }
+    return -1;
+  }, []);
+
+  // Build auto-filled responses and check if all prompts are covered.
+  // Computed during render to prevent modal flash when auto-submitting.
+  const buildAutofilledResponses = useCallback(
+    (req: KeyboardInteractiveRequest): { responses: string[]; allFilled: boolean } => {
+      const filled = req.prompts.map(() => "");
+      if (req.savedPassword) {
+        const idx = getAutofillPasswordIndex(req.prompts);
+        if (idx >= 0) filled[idx] = req.savedPassword;
+      }
+      return { responses: filled, allFilled: filled.length > 0 && filled.every((r) => r.length > 0) };
+    },
+    [getAutofillPasswordIndex]
+  );
+
+  // Auto-submit when all prompts are filled by savedPassword (e.g. single password prompt)
+  const canAutoSubmit = request ? buildAutofilledResponses(request).allFilled : false;
+
   // Reset state when request changes
   useEffect(() => {
-    if (request) {
-      setResponses(request.prompts.map(() => ""));
-      setShowPasswords(request.prompts.map(() => false));
-      setIsSubmitting(false);
+    if (!request) return;
+    const { responses: filled, allFilled } = buildAutofilledResponses(request);
+    if (allFilled) {
+      onSubmit(request.requestId, filled);
+      return;
     }
-  }, [request]);
+    setResponses(filled);
+    setShowPasswords(request.prompts.map(() => false));
+    setIsSubmitting(false);
+  }, [request, buildAutofilledResponses, onSubmit]);
 
   const handleResponseChange = useCallback((index: number, value: string) => {
     setResponses((prev) => {
@@ -93,7 +129,7 @@ export const KeyboardInteractiveModal: React.FC<KeyboardInteractiveModalProps> =
     [handleSubmit, isSubmitting]
   );
 
-  if (!request) return null;
+  if (!request || canAutoSubmit) return null;
 
   const title = request.name?.trim() || t("keyboard.interactive.title");
   const description =
