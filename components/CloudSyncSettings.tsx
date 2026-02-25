@@ -1582,10 +1582,9 @@ export const SyncDashboard: React.FC<SyncDashboardProps> = ({
 
                                     if (sync.hasAnyConnectedProvider) {
                                         const payload = onBuildPayload();
-                                        if (!ensureSyncablePayload(payload)) {
-                                            return;
+                                        if (ensureSyncablePayload(payload)) {
+                                            await sync.syncNow(payload);
                                         }
-                                        await sync.syncNow(payload);
                                     }
 
                                     toast.success(t('cloudSync.changeKey.updatedToast'));
