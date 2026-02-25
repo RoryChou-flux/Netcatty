@@ -8,13 +8,24 @@ export const CREDENTIAL_ENCRYPTION_PREFIX = "enc:v1:";
 const BASE64_RE = /^[A-Za-z0-9+/]+=*$/;
 
 /**
- * Electron safeStorage ciphertext includes platform encryption headers/metadata,
- * producing base64 payloads of at least ~60 characters even for the shortest
- * plaintext inputs.  A conservative minimum of 32 characters avoids
- * false-positive matches on plaintext credentials that happen to start with
- * the enc:v1: prefix (e.g. "enc:v1:hello").
+ * Chromium/Electron safeStorage ciphertext carries known platform headers:
+ * - macOS/Linux: plaintext bytes start with "v10" or "v11"
+ * - Windows (legacy DPAPI blob): leading bytes are 0x01 0x00 0x00 0x00
+ *
+ * We validate the base64 payload starts with one of these header signatures
+ * instead of relying only on prefix+length heuristics. This greatly reduces
+ * false positives for plaintext credentials that happen to start with "enc:v1:".
+ *
+ * References:
+ * - components/os_crypt/sync/os_crypt_mac.mm (kObfuscationPrefixV10 = "v10")
+ * - components/os_crypt/sync/os_crypt_linux.cc (kObfuscationPrefixV10/V11)
+ * - components/os_crypt/sync/os_crypt_win.cc (DPAPI legacy path)
  */
-const MIN_CIPHERTEXT_BASE64_LENGTH = 32;
+const SAFE_STORAGE_BASE64_HEADER_PREFIXES = [
+  "djEw", // "v10"
+  "djEx", // "v11"
+  "AQAAAA", // 0x01 0x00 0x00 0x00 (DPAPI blob header)
+] as const;
 
 export const isEncryptedCredentialPlaceholder = (
   value: string | undefined | null,
@@ -23,7 +34,9 @@ export const isEncryptedCredentialPlaceholder = (
     return false;
   }
   const payload = value.slice(CREDENTIAL_ENCRYPTION_PREFIX.length);
-  return payload.length >= MIN_CIPHERTEXT_BASE64_LENGTH && BASE64_RE.test(payload);
+  if (!payload || !BASE64_RE.test(payload)) return false;
+
+  return SAFE_STORAGE_BASE64_HEADER_PREFIXES.some((prefix) => payload.startsWith(prefix));
 };
 
 /**
