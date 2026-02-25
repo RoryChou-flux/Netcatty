@@ -1572,6 +1572,16 @@ export const SyncDashboard: React.FC<SyncDashboardProps> = ({
                                     return;
                                 }
 
+                                let payloadForReencrypt: SyncPayload | null = null;
+                                if (sync.hasAnyConnectedProvider) {
+                                    const payload = onBuildPayload();
+                                    if (!ensureSyncablePayload(payload)) {
+                                        setChangeKeyError(t('sync.credentialsUnavailable'));
+                                        return;
+                                    }
+                                    payloadForReencrypt = payload;
+                                }
+
                                 setIsChangingKey(true);
                                 try {
                                     const ok = await sync.changeMasterKey(currentMasterKey, newMasterKey);
@@ -1580,11 +1590,8 @@ export const SyncDashboard: React.FC<SyncDashboardProps> = ({
                                         return;
                                     }
 
-                                    if (sync.hasAnyConnectedProvider) {
-                                        const payload = onBuildPayload();
-                                        if (ensureSyncablePayload(payload)) {
-                                            await sync.syncNow(payload);
-                                        }
+                                    if (payloadForReencrypt) {
+                                        await sync.syncNow(payloadForReencrypt);
                                     }
 
                                     toast.success(t('cloudSync.changeKey.updatedToast'));
