@@ -329,47 +329,50 @@ async function findAllDefaultPrivateKeys(options = {}) {
       methods: authMethods.map(m => m.id),
     });
   
-   // Use dynamic authHandler to try all keys
-   let authIndex = 0;
-   const attemptedMethodIds = new Set();
-   
-   const authHandler = (methodsLeft, partialSuccess, callback) => {
-     const availableMethods = methodsLeft || ["publickey", "password", "keyboard-interactive", "agent"];
-     
-     while (authIndex < authMethods.length) {
-       const method = authMethods[authIndex];
-       authIndex++;
-       
-       if (attemptedMethodIds.has(method.id)) continue;
-       attemptedMethodIds.add(method.id);
-       
+  // Use dynamic authHandler to try all configured methods.
+  // Important: only mark a method as attempted when it is actually sent to ssh2.
+  // This avoids consuming methods that are unavailable in an earlier round but
+  // become available after partialSuccess (for example password -> keyboard-interactive MFA).
+  const attemptedMethodIds = new Set();
+  
+  const authHandler = (methodsLeft, partialSuccess, callback) => {
+    const availableMethods = methodsLeft || ["publickey", "password", "keyboard-interactive", "agent"];
+    
+    for (const method of authMethods) {
+      if (attemptedMethodIds.has(method.id)) continue;
+      
       if (method.type === "agent" && (availableMethods.includes("publickey") || availableMethods.includes("agent"))) {
+        attemptedMethodIds.add(method.id);
         console.log(`${logPrefix} Trying agent auth`);
         return callback("agent");
       } else if (method.type === "publickey" && availableMethods.includes("publickey")) {
-         console.log(`${logPrefix} Trying publickey auth:`, method.id);
-         const pubkeyAuth = {
-           type: "publickey",
-           username,
-           key: method.key,
-         };
-         if (method.passphrase) {
-           pubkeyAuth.passphrase = method.passphrase;
-         }
-         return callback(pubkeyAuth);
+        attemptedMethodIds.add(method.id);
+        console.log(`${logPrefix} Trying publickey auth:`, method.id);
+        const pubkeyAuth = {
+          type: "publickey",
+          username,
+          key: method.key,
+        };
+        if (method.passphrase) {
+          pubkeyAuth.passphrase = method.passphrase;
+        }
+        return callback(pubkeyAuth);
       } else if (method.type === "password" && availableMethods.includes("password")) {
+        attemptedMethodIds.add(method.id);
         console.log(`${logPrefix} Trying password auth`);
         return callback({
           type: "password",
           username,
           password,
         });
-       } else if (method.type === "keyboard-interactive" && availableMethods.includes("keyboard-interactive")) {
-         return callback("keyboard-interactive");
-       }
-     }
-     return callback(false);
-   };
+      } else if (method.type === "keyboard-interactive" && availableMethods.includes("keyboard-interactive")) {
+        attemptedMethodIds.add(method.id);
+        return callback("keyboard-interactive");
+      }
+    }
+    
+    return callback(false);
+  };
    
   // Determine the agent to return - if authMethods includes agent, we need to provide the socket
   // even if effectiveAgent is null (for fallback scenarios)
