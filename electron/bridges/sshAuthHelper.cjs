@@ -139,14 +139,25 @@ async function findAllDefaultPrivateKeys(options = {}) {
   * @param {string} [options.privateKey] - Explicitly configured private key
   * @param {string} [options.password] - Password for authentication
  * @param {string} [options.passphrase] - Passphrase for encrypted private key
-  * @param {Object} [options.agent] - SSH agent (NetcattyAgent or socket path)
-  * @param {string} options.username - SSH username
+ * @param {Object} [options.agent] - SSH agent (NetcattyAgent or socket path)
+ * @param {string} options.username - SSH username
   * @param {string} [options.logPrefix] - Log prefix for debugging
+ * @param {boolean} [options.preferKeyboardInteractive] - Prefer keyboard-interactive before password in password-only flows
   * @returns {{ authHandler: Function|Array, privateKey: string|null, agent: string|Object|null, usedDefaultKeys: boolean }}
  * @param {Array} [options.unlockedEncryptedKeys] - Array of unlocked encrypted keys with passphrases
   */
  function buildAuthHandler(options) {
-  const { privateKey, password, passphrase, agent, username, logPrefix = "[SSH]", unlockedEncryptedKeys = [], defaultKeys = [] } = options;
+  const {
+    privateKey,
+    password,
+    passphrase,
+    agent,
+    username,
+    logPrefix = "[SSH]",
+    unlockedEncryptedKeys = [],
+    defaultKeys = [],
+    preferKeyboardInteractive = false,
+  } = options;
    
   // Determine what type of explicit auth the user configured
   const hasExplicitKey = !!privateKey;
@@ -190,10 +201,17 @@ async function findAllDefaultPrivateKeys(options = {}) {
   // If only simple auth methods and no fallback keys needed, use array-based handler
   if (hasExplicitAuth && !hasFallbackOptions) {
     const authMethods = [];
-    if (effectiveAgent) authMethods.push("agent");
-    if (privateKey) authMethods.push("publickey");
-    if (password) authMethods.push("password");
-    authMethods.push("keyboard-interactive");
+    if (isPasswordOnly && preferKeyboardInteractive) {
+      // Bastion/2FA setups often treat password auth attempt as a new challenge trigger.
+      // Prefer keyboard-interactive first to avoid duplicate OTP pushes.
+      authMethods.push("keyboard-interactive");
+      authMethods.push("password");
+    } else {
+      if (effectiveAgent) authMethods.push("agent");
+      if (privateKey) authMethods.push("publickey");
+      if (password) authMethods.push("password");
+      authMethods.push("keyboard-interactive");
+    }
     
     return {
       authHandler: authMethods,
@@ -212,7 +230,11 @@ async function findAllDefaultPrivateKeys(options = {}) {
   const authMethods = [];
   
   if (isPasswordOnly) {
-    // Password-only: password first, then fallbacks
+    // Password-only: for some bastions, password attempt may trigger extra OTP.
+    // Allow preferring keyboard-interactive to keep challenge flow single-pass.
+    if (preferKeyboardInteractive) {
+      authMethods.push({ type: "keyboard-interactive", id: "keyboard-interactive-primary" });
+    }
     authMethods.push({ type: "password", id: "password" });
     
     // Add agent and default keys AFTER password as fallback
@@ -308,8 +330,10 @@ async function findAllDefaultPrivateKeys(options = {}) {
     });
   }
   
-  // Keyboard-interactive as last resort
-  authMethods.push({ type: "keyboard-interactive", id: "keyboard-interactive" });
+  // Keyboard-interactive as last resort (unless already inserted above)
+  if (!authMethods.some((m) => m.type === "keyboard-interactive")) {
+    authMethods.push({ type: "keyboard-interactive", id: "keyboard-interactive" });
+  }
    
   console.log(`${logPrefix} Auth methods configured`, { 
       isPasswordOnly,

@@ -68,6 +68,11 @@ const buildProxyJumpValue = (
     return null;
   }
 
+  // relay-shell is a runtime-only mode with no SSH config equivalent
+  if (host.hostChain.connectionMode === 'relay-shell') {
+    return null;
+  }
+
   const hostMap = new Map(allHosts.map(h => [h.id, h]));
   const jumpParts: string[] = [];
 
@@ -117,6 +122,8 @@ export const serializeHostsToSshConfig = (hosts: Host[], allHosts?: Host[]): str
     const proxyJumpValue = buildProxyJumpValue(host, hostsForLookup, managedHostIds);
     if (proxyJumpValue) {
       lines.push(`    ProxyJump ${proxyJumpValue}`);
+    } else if (host.hostChain?.connectionMode === 'relay-shell' && host.hostChain.hostIds?.length) {
+      lines.push("    # NOTE: relay-shell jump chain is runtime-only and cannot be represented in ssh_config");
     }
 
     blocks.push(lines.join("\n"));

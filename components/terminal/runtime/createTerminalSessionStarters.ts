@@ -387,6 +387,8 @@ export const createTerminalSessionStarters = (ctx: TerminalSessionStartersContex
         password?: string;
         key?: SSHKey;
       }): Promise<string> => {
+        const connectionMode = ctx.host.hostChain?.connectionMode;
+        const startupCommand = ctx.startupCommand || ctx.host.startupCommand;
         return ctx.terminalBackend.startSSHSession({
           sessionId: ctx.sessionId,
           hostname: ctx.host.hostname,
@@ -409,6 +411,8 @@ export const createTerminalSessionStarters = (ctx: TerminalSessionStartersContex
           env: termEnv,
           proxy: proxyConfig,
           jumpHosts: jumpHosts.length > 0 ? jumpHosts : undefined,
+          jumpMode: connectionMode === 'relay-shell' ? 'relay-shell' : undefined,
+          startupCommand,
           keepaliveInterval: ctx.terminalSettings?.keepaliveInterval,
         });
       };
@@ -489,13 +493,9 @@ export const createTerminalSessionStarters = (ctx: TerminalSessionStartersContex
       const commandToRun = ctx.startupCommand || ctx.host.startupCommand;
       if (commandToRun && !ctx.hasRunStartupCommandRef.current) {
         ctx.hasRunStartupCommandRef.current = true;
-        setTimeout(() => {
-          if (!ctx.sessionRef.current) return;
-          ctx.terminalBackend.writeToSession(ctx.sessionRef.current, `${commandToRun}\r`);
-          if (ctx.onCommandExecuted) {
-            ctx.onCommandExecuted(commandToRun, ctx.host.id, ctx.host.label, ctx.sessionId);
-          }
-        }, 600);
+        if (ctx.onCommandExecuted) {
+          ctx.onCommandExecuted(commandToRun, ctx.host.id, ctx.host.label, ctx.sessionId);
+        }
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

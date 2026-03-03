@@ -211,6 +211,7 @@ const HostDetailsPanel: React.FC<HostDetailsPanelProps> = ({
       ...prev,
       hostChain: {
         hostIds: [...(prev.hostChain?.hostIds || []), hostId],
+        connectionMode: prev.hostChain?.connectionMode,
       },
     }));
   };
@@ -220,6 +221,7 @@ const HostDetailsPanel: React.FC<HostDetailsPanelProps> = ({
       ...prev,
       hostChain: {
         hostIds: (prev.hostChain?.hostIds || []).filter((_, i) => i !== index),
+        connectionMode: prev.hostChain?.connectionMode,
       },
     }));
   };
@@ -229,6 +231,16 @@ const HostDetailsPanel: React.FC<HostDetailsPanelProps> = ({
       const { hostChain: _hostChain, ...rest } = prev;
       return rest as Host;
     });
+  }, []);
+
+  const setChainConnectionMode = useCallback((mode: 'proxy-tunnel' | 'relay-shell') => {
+    setForm((prev) => ({
+      ...prev,
+      hostChain: {
+        hostIds: prev.hostChain?.hostIds || [],
+        connectionMode: mode === 'proxy-tunnel' ? undefined : mode,
+      },
+    }));
   }, []);
 
   // Environment variables state
@@ -292,6 +304,18 @@ const HostDetailsPanel: React.FC<HostDetailsPanelProps> = ({
       finalManagedSourceId = undefined;
     }
 
+    const chainIds = (form.hostChain?.hostIds || []).filter(Boolean);
+    const cleanedHostChain =
+      chainIds.length > 0
+        ? {
+            hostIds: chainIds,
+            connectionMode:
+              form.hostChain?.connectionMode === "relay-shell"
+                ? "relay-shell"
+                : undefined,
+          }
+        : undefined;
+
     const cleaned: Host = {
       ...form,
       label: finalLabel,
@@ -301,6 +325,7 @@ const HostDetailsPanel: React.FC<HostDetailsPanelProps> = ({
       // Clear password if savePassword is explicitly set to false
       password: form.savePassword === false ? undefined : form.password,
       managedSourceId: finalManagedSourceId,
+      hostChain: cleanedHostChain,
     };
     onSave(cleaned);
   };
@@ -440,6 +465,8 @@ const HostDetailsPanel: React.FC<HostDetailsPanelProps> = ({
         form={form}
         chainedHosts={chainedHosts}
         availableHostsForChain={availableHostsForChain}
+        connectionMode={form.hostChain?.connectionMode || 'proxy-tunnel'}
+        onConnectionModeChange={setChainConnectionMode}
         onAddHost={addHostToChain}
         onRemoveHost={removeHostFromChain}
         onClearChain={clearHostChain}

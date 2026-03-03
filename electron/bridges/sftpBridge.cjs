@@ -808,6 +808,11 @@ async function openSftp(event, options) {
   const hasJumpHosts = jumpHosts.length > 0;
   const hasProxy = !!options.proxy;
 
+  // Guard: relay-shell mode does not support SFTP
+  if (hasJumpHosts && options.jumpMode === "relay-shell") {
+    throw new Error("SFTP is not supported in relay-shell mode. Please use proxy-tunnel mode.");
+  }
+
   let chainConnections = [];
   let connectionSocket = null;
 

@@ -1686,6 +1686,7 @@ const TerminalComponent: React.FC<TerminalProps> = ({
               keySource: resolvedAuth.key?.source,
               proxy: proxyConfig,
               jumpHosts: jumpHosts && jumpHosts.length > 0 ? jumpHosts : undefined,
+              jumpMode: host.hostChain?.connectionMode === 'relay-shell' ? 'relay-shell' : undefined,
               sftpSudo: host.sftpSudo,
               legacyAlgorithms: host.legacyAlgorithms,
             };

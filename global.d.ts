@@ -70,6 +70,8 @@ declare global {
     proxy?: NetcattyProxyConfig;
     // Jump hosts (bastion chain)
     jumpHosts?: NetcattyJumpHost[];
+    // Jump host connection mode: 'proxy-tunnel' (default) or 'relay-shell'
+    jumpMode?: 'proxy-tunnel' | 'relay-shell';
     // SSH-level keepalive interval in seconds (0 = disabled)
     keepaliveInterval?: number;
     // Enable legacy SSH algorithms for older network equipment

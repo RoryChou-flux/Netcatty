@@ -1042,6 +1042,7 @@ const zhCN: Messages = {
   'sftp.error.connectionLostManual': '连接已断开，请手动重新连接。',
   'sftp.error.connectionLostReconnecting': '连接已断开，正在重连...',
   'sftp.error.sessionLost': 'SFTP 会话已断开，请重新连接。',
+  'sftp.error.relayShellNotSupported': 'SFTP 不支持中继 Shell 模式。请在主机链路设置中切换为代理隧道模式。',
 
   // Settings > SFTP Show Hidden Files
   'settings.sftp.showHiddenFiles': '显示隐藏文件',
@@ -1213,6 +1214,11 @@ const zhCN: Messages = {
   'hostDetails.chain.target': '目标',
   'hostDetails.chain.availableHosts': '可用主机',
   'hostDetails.chain.clear': '清空',
+  'hostDetails.chain.mode': '连接模式',
+  'hostDetails.chain.mode.proxyTunnel': '代理隧道',
+  'hostDetails.chain.mode.relayShell': '中继 Shell',
+  'hostDetails.chain.mode.proxyTunnel.desc': '使用 SSH TCP 转发（direct-tcpip 通道）通过跳板机建立隧道。需要中继服务器启用 AllowTcpForwarding。',
+  'hostDetails.chain.mode.relayShell.desc': '在中继主机的 Shell 中运行 ssh 命令以到达目标。即使 TCP 转发被禁用也可使用。此模式不支持 SFTP。',
   'hostDetails.group.title': '新建分组',
   'hostDetails.group.general': '常规',
   'hostDetails.group.namePlaceholder': '分组名称',

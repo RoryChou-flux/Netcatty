@@ -264,6 +264,16 @@ function resolveLangFromCharset(charset) {
   return trimmed;
 }
 
+function isAuthenticationError(err) {
+  const message = String(err?.message || "").toLowerCase();
+  return (
+    message.includes("authentication") ||
+    message.includes("auth") ||
+    message.includes("password") ||
+    err?.level === "client-authentication"
+  );
+}
+
 function safeSend(sender, channel, payload) {
   try {
     if (!sender || sender.isDestroyed()) return;
@@ -279,6 +289,163 @@ function safeSend(sender, channel, payload) {
 function init(deps) {
   sessions = deps.sessions;
   electronModule = deps.electronModule;
+}
+
+// ---------------------------------------------------------------------------
+// Relay-shell helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Regex that matches safe SSH identifiers (hostnames, usernames, ports).
+ * Rejects shell metacharacters to prevent command injection.
+ */
+const SAFE_SSH_IDENTIFIER = /^[a-zA-Z0-9._:@\[\]\-]+$/;
+
+/**
+ * Assert that a value is safe to embed in a shell command.
+ * Throws if the value contains potentially dangerous characters.
+ */
+function assertSafeSshValue(value, label) {
+  if (typeof value !== "string" || !SAFE_SSH_IDENTIFIER.test(value)) {
+    throw new Error(`Unsafe ${label} for relay-shell command: ${JSON.stringify(value)}`);
+  }
+}
+
+/**
+ * Shell-escape a string for sh (POSIX). Wraps in single quotes and escapes
+ * embedded single quotes using the standard '\'' technique.
+ */
+function shellEscapeForSh(s) {
+  return "'" + s.replace(/'/g, "'\\''") + "'";
+}
+
+/**
+ * Ensure IPv6 hosts are bracketed when used in user@host:port notation.
+ */
+function formatHostForUserAtHost(hostname) {
+  if (hostname.includes(":") && !(hostname.startsWith("[") && hostname.endsWith("]"))) {
+    return `[${hostname}]`;
+  }
+  return hostname;
+}
+
+/**
+ * Format a jump host as user@host:port for use in ssh -J argument.
+ */
+function formatJumpForProxyArg(jump) {
+  assertSafeSshValue(jump.hostname, "jump hostname");
+  assertSafeSshValue(jump.username || "root", "jump username");
+  const port = jump.port || 22;
+  assertSafeSshValue(String(port), "jump port");
+  const user = jump.username || "root";
+  const hostForTarget = formatHostForUserAtHost(jump.hostname);
+  return port === 22
+    ? `${user}@${hostForTarget}`
+    : `${user}@${hostForTarget}:${port}`;
+}
+
+const RELAY_STARTUP_DELAY_MS = 3000;
+
+function looksLikeShellPrompt(text) {
+  if (!text) return false;
+  const normalized = text.replace(/\r/g, "\n");
+  const lines = normalized.split("\n");
+  const last = lines[lines.length - 1]?.trimEnd();
+  if (!last) return false;
+
+  // Avoid firing startup command while still on auth prompts.
+  if (/(password|passphrase|otp|verification|验证码|动态口令|code)\s*[:：]\s*$/i.test(last)) {
+    return false;
+  }
+
+  return /[#$>%]\s*$/.test(last);
+}
+
+function scheduleRelayStartupCommand(stream, startupCommand) {
+  const command = typeof startupCommand === "string" ? startupCommand.trim() : "";
+  if (!command) return () => { };
+
+  let sent = false;
+  let timer = null;
+  let promptProbe = "";
+  const MAX_PROMPT_PROBE_LEN = 512;
+
+  const cleanup = () => {
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
+    stream.off("data", onData);
+    stream.stderr?.off("data", onStderr);
+  };
+
+  const sendOnce = () => {
+    if (sent) return;
+    sent = true;
+    stream.write(`${command}\n`);
+    cleanup();
+  };
+
+  const pushProbeAndCheck = (text) => {
+    if (!text) return;
+    // Keep a sliding tail so prompt tokens split across chunks are still detectable.
+    promptProbe = (promptProbe + text).slice(-MAX_PROMPT_PROBE_LEN);
+    if (looksLikeShellPrompt(promptProbe)) {
+      sendOnce();
+    }
+  };
+
+  const onData = (data) => {
+    pushProbeAndCheck(data.toString("utf8"));
+  };
+
+  const onStderr = (data) => {
+    pushProbeAndCheck(data.toString("utf8"));
+  };
+
+  stream.on("data", onData);
+  stream.stderr?.on("data", onStderr);
+  timer = setTimeout(sendOnce, RELAY_STARTUP_DELAY_MS);
+
+  return cleanup;
+}
+
+/**
+ * Build the full `ssh -tt ...` command that will be executed on the relay host's
+ * shell to reach the final target (or the next hop in a multi-hop chain).
+ *
+ * @param {NetcattySSHOptions} options  - The original session options (target host info)
+ * @param {NetcattyJumpHost[]} jumpHosts - Jump hosts. jumpHosts[0] is the relay we connect to.
+ *                                         jumpHosts[1..N-1] become -J arguments on the relay.
+ * @returns {string} The ssh command to write into the relay shell.
+ */
+function buildRelayShellCommand(options, jumpHosts) {
+  const targetUser = options.username || "root";
+  const targetHost = options.hostname;
+  const targetPort = options.port || 22;
+
+  assertSafeSshValue(targetUser, "target username");
+  assertSafeSshValue(targetHost, "target hostname");
+  assertSafeSshValue(String(targetPort), "target port");
+
+  const parts = ["ssh", "-tt"];
+
+  // Preferred auth methods: keyboard-interactive and password so the relay
+  // will prompt for credentials and the terminal user can type them.
+  parts.push("-o", "PreferredAuthentications=publickey,keyboard-interactive,password");
+  parts.push("-o", "StrictHostKeyChecking=accept-new");
+
+  // If there are intermediate jump hosts (beyond the relay we SSH into),
+  // chain them via -J.
+  if (jumpHosts.length > 1) {
+    const intermediates = jumpHosts.slice(1).map(formatJumpForProxyArg);
+    parts.push("-J", shellEscapeForSh(intermediates.join(",")));
+  }
+
+  parts.push("-p", String(targetPort));
+  parts.push(`${targetUser}@${formatHostForUserAtHost(targetHost)}`);
+
+  return parts.join(" ");
 }
 
 /**
@@ -851,7 +1018,226 @@ async function startSSHSession(event, options) {
     }
 
     // Handle chain/proxy connections
-    if (hasJumpHosts) {
+    const isRelayShell = hasJumpHosts && options.jumpMode === "relay-shell";
+
+    if (isRelayShell) {
+      // Relay-shell mode: SSH into the first jump host, then run `ssh` in its shell.
+      const relay = jumpHosts[0];
+      const relayLabel = relay.label || `${relay.hostname}:${relay.port || 22}`;
+      log("Relay-shell mode: targeting relay host", { relayLabel });
+
+      // Re-target conn at the relay host
+      connectOpts.host = relay.hostname;
+      connectOpts.port = relay.port || 22;
+      connectOpts.username = relay.username || "root";
+
+      // Re-apply auth credentials for the relay host (mirrors chain hop auth at connectThroughChain)
+      delete connectOpts.privateKey;
+      delete connectOpts.passphrase;
+      delete connectOpts.password;
+      connectOpts.agent = undefined;
+
+      const relayCertificate = typeof relay.certificate === "string" && relay.certificate.trim().length > 0
+        ? relay.certificate : null;
+
+      if (relayCertificate) {
+        // Certificate auth requires a NetcattyAgent (same as chain path)
+        const relayAgent = new NetcattyAgent({
+          mode: "certificate",
+          webContents: event.sender,
+          meta: {
+            label: relay.keyId || relay.username || "",
+            certificate: relay.certificate,
+            privateKey: relay.privateKey,
+            passphrase: relay.passphrase,
+          },
+        });
+        connectOpts.agent = relayAgent;
+      } else if (relay.privateKey) {
+        connectOpts.privateKey = relay.privateKey;
+        if (relay.passphrase) connectOpts.passphrase = relay.passphrase;
+      }
+
+      if (relay.password) {
+        connectOpts.password = relay.password;
+      }
+
+      // Build auth handler using shared helper (same as chain path)
+      const relayAuthConfig = buildAuthHandler({
+        privateKey: connectOpts.privateKey,
+        password: connectOpts.password,
+        passphrase: connectOpts.passphrase,
+        agent: connectOpts.agent,
+        username: connectOpts.username,
+        logPrefix: "[Relay-Shell]",
+        unlockedEncryptedKeys: options._unlockedEncryptedKeys || [],
+        defaultKeys: allDefaultKeys,
+        // Bastion hosts commonly use keyboard-interactive (password + OTP).
+        // Trying password first can trigger an extra OTP challenge cycle.
+        preferKeyboardInteractive: true,
+      });
+      applyAuthToConnOpts(connectOpts, relayAuthConfig);
+
+      // tryKeyboard for relay
+      connectOpts.tryKeyboard = true;
+      // Extend timeout for MFA / keyboard-interactive on relay
+      connectOpts.readyTimeout = 120000;
+
+      // Support proxy for the first hop (relay host)
+      if (hasProxy) {
+        log("Relay-shell: using proxy for first hop to relay");
+        const proxySock = await createProxySocket(
+          options.proxy,
+          relay.hostname,
+          relay.port || 22
+        );
+        connectOpts.sock = proxySock;
+        delete connectOpts.host;
+        delete connectOpts.port;
+      }
+
+      // Build the relay shell command (rest of the chain minus the first relay)
+      const relayShellCommand = buildRelayShellCommand(options, jumpHosts);
+      log("Relay-shell command", { relayShellCommand });
+
+      sendProgress(1, totalHops, relayLabel, "connecting");
+
+      return new Promise((resolve, reject) => {
+        const closeRelayChainConnections = () => {
+          const session = sessions.get(sessionId);
+          const relayChainConnections = session?.chainConnections || [];
+          for (const c of relayChainConnections) {
+            try { c.end(); } catch { }
+          }
+        };
+
+        conn.on("ready", () => {
+          console.log(`[Relay-Shell] ${relayLabel} ready, opening shell...`);
+          sendProgress(1, totalHops, relayLabel, "connected");
+          sendProgress(2, totalHops, options.hostname, "connecting");
+
+          conn.shell(
+            { term: "xterm-256color", cols, rows },
+            {
+              env: {
+                LANG: resolveLangFromCharset(options.charset),
+                COLORTERM: "truecolor",
+                ...(options.env || {}),
+              },
+            },
+            (err, stream) => {
+              if (err) {
+                conn.end();
+                reject(err);
+                return;
+              }
+
+              const session = {
+                conn,
+                stream,
+                chainConnections: [],
+                webContentsId: event.sender.id,
+              };
+              sessions.set(sessionId, session);
+
+              // Data buffering (same pattern as normal SSH)
+              let dataBuffer = "";
+              let flushTimeout = null;
+              const FLUSH_INTERVAL = 8;
+              const MAX_BUFFER_SIZE = 16384;
+
+              const flushBuffer = () => {
+                if (dataBuffer.length > 0) {
+                  safeSend(event.sender, "netcatty:data", { sessionId, data: dataBuffer });
+                  dataBuffer = "";
+                }
+                flushTimeout = null;
+              };
+
+              const bufferData = (data) => {
+                dataBuffer += data;
+                if (dataBuffer.length >= MAX_BUFFER_SIZE) {
+                  if (flushTimeout) { clearTimeout(flushTimeout); flushTimeout = null; }
+                  flushBuffer();
+                } else if (!flushTimeout) {
+                  flushTimeout = setTimeout(flushBuffer, FLUSH_INTERVAL);
+                }
+              };
+
+              stream.on("data", (data) => bufferData(data.toString("utf8")));
+              stream.stderr?.on("data", (data) => bufferData(data.toString("utf8")));
+
+              stream.on("close", () => {
+                if (flushTimeout) clearTimeout(flushTimeout);
+                flushBuffer();
+                safeSend(event.sender, "netcatty:exit", { sessionId, exitCode: 0 });
+                closeRelayChainConnections();
+                sessions.delete(sessionId);
+                conn.end();
+              });
+
+              // Write the ssh command into the relay shell
+              stream.write(`${relayShellCommand}\n`);
+              // Relay-shell cannot know exact inner SSH readiness; try prompt detection
+              // first and keep a timeout fallback for non-standard prompts.
+              const cancelRelayStartup = scheduleRelayStartupCommand(stream, options.startupCommand);
+              stream.once("close", cancelRelayStartup);
+
+              // Resolved when relay shell is established; inner ssh may still fail later
+              // and will be surfaced via terminal output/exit events.
+              resolve({ sessionId });
+            }
+          );
+        });
+
+        conn.on("error", (err) => {
+          const isAuthError = isAuthenticationError(err);
+          if (isAuthError) {
+            clearCachedAuthMethod(connectOpts.username, relay.hostname, relay.port || 22);
+            safeSend(event.sender, "netcatty:auth:failed", {
+              sessionId,
+              error: err.message,
+              hostname: relay.hostname,
+            });
+          } else {
+            console.error(`[Relay-Shell] ${relayLabel} error:`, err.message);
+          }
+          safeSend(event.sender, "netcatty:exit", { sessionId, exitCode: 1, error: err.message });
+          closeRelayChainConnections();
+          sessions.delete(sessionId);
+          reject(err);
+        });
+
+        conn.on("timeout", () => {
+          const err = new Error(`Connection timeout to relay host ${relayLabel}`);
+          safeSend(event.sender, "netcatty:exit", { sessionId, exitCode: 1, error: err.message });
+          closeRelayChainConnections();
+          sessions.delete(sessionId);
+          reject(err);
+        });
+
+        conn.on("close", () => {
+          safeSend(event.sender, "netcatty:exit", { sessionId, exitCode: 0 });
+          closeRelayChainConnections();
+          sessions.delete(sessionId);
+        });
+
+        // Handle keyboard-interactive for the relay host
+        conn.on("keyboard-interactive", (name, instructions, instructionsLang, prompts, finish) => {
+          if (!prompts || prompts.length === 0) { finish([]); return; }
+          const requestId = keyboardInteractiveHandler.generateRequestId("relay");
+          keyboardInteractiveHandler.storeRequest(requestId, (responses) => finish(responses), sender.id, sessionId);
+          safeSend(sender, "netcatty:keyboard-interactive", {
+            requestId, sessionId, name: name || "", instructions: instructions || "",
+            prompts: prompts.map((p) => ({ prompt: p.prompt, echo: p.echo })),
+            hostname: relay.hostname, savedPassword: relay.password || null,
+          });
+        });
+
+        conn.connect(connectOpts);
+      });
+    } else if (hasJumpHosts) {
+      // Standard proxy-tunnel mode
       // Pass fetched keys to chain connection to avoid re-reading files
       options._defaultKeys = allDefaultKeys;
 
@@ -998,11 +1384,7 @@ async function startSSHSession(event, options) {
 
       conn.on("error", (err) => {
         const contents = event.sender;
-
-        const isAuthError = err.message?.toLowerCase().includes('authentication') ||
-          err.message?.toLowerCase().includes('auth') ||
-          err.message?.toLowerCase().includes('password') ||
-          err.level === 'client-authentication';
+        const isAuthError = isAuthenticationError(err);
 
         // Clear cached auth method on auth failure so next attempt tries all methods
         if (isAuthError) {
@@ -1318,9 +1700,7 @@ async function startSSHSessionWrapper(event, options) {
   try {
     return await startSSHSession(event, options);
   } catch (err) {
-    const isAuthError = err.message?.toLowerCase().includes('authentication') ||
-      err.message?.toLowerCase().includes('auth') ||
-      err.level === 'client-authentication';
+    const isAuthError = isAuthenticationError(err);
 
     if (isAuthError) {
       // Check if there are encrypted default keys we haven't tried yet
@@ -1356,9 +1736,7 @@ async function startSSHSessionWrapper(event, options) {
               });
             } catch (retryErr) {
               // Re-wrap retry errors the same way as initial errors
-              const isRetryAuthError = retryErr.message?.toLowerCase().includes('authentication') ||
-                retryErr.message?.toLowerCase().includes('auth') ||
-                retryErr.level === 'client-authentication';
+              const isRetryAuthError = isAuthenticationError(retryErr);
 
               if (isRetryAuthError) {
                 const authError = new Error(retryErr.message);

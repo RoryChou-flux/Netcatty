@@ -720,6 +720,7 @@ const en: Messages = {
   'sftp.error.connectionLostManual': 'Connection lost. Please reconnect manually.',
   'sftp.error.connectionLostReconnecting': 'Connection lost. Reconnecting...',
   'sftp.error.sessionLost': 'SFTP session lost. Please reconnect.',
+  'sftp.error.relayShellNotSupported': 'SFTP is not supported in relay-shell mode. Please switch to proxy-tunnel mode in the host chain settings.',
 
   // Settings > SFTP Show Hidden Files
   'settings.sftp.showHiddenFiles': 'Show hidden files',
@@ -835,6 +836,11 @@ const en: Messages = {
   'hostDetails.chain.target': 'Target',
   'hostDetails.chain.availableHosts': 'Available Hosts',
   'hostDetails.chain.clear': 'Clear',
+  'hostDetails.chain.mode': 'Connection mode',
+  'hostDetails.chain.mode.proxyTunnel': 'Proxy Tunnel',
+  'hostDetails.chain.mode.relayShell': 'Relay Shell',
+  'hostDetails.chain.mode.proxyTunnel.desc': 'Uses SSH TCP forwarding (direct-tcpip channel) to tunnel through jump hosts. Requires AllowTcpForwarding on relay servers.',
+  'hostDetails.chain.mode.relayShell.desc': 'Runs ssh command on the relay host\'s shell to reach the target. Works even when TCP forwarding is disabled. SFTP is not supported in this mode.',
   'hostDetails.group.title': 'New Group',
   'hostDetails.group.general': 'General',
   'hostDetails.group.namePlaceholder': 'Group name',

@@ -294,7 +294,8 @@ export const useManagedSourceSync = ({
           const currChain = curr.hostChain?.hostIds || [];
           const chainChanged =
             prevChain.length !== currChain.length ||
-            prevChain.some((id, i) => id !== currChain[i]);
+            prevChain.some((id, i) => id !== currChain[i]) ||
+            (prev.hostChain?.connectionMode || 'proxy-tunnel') !== (curr.hostChain?.connectionMode || 'proxy-tunnel');
 
           const hasChanged =
             prev.hostname !== curr.hostname ||

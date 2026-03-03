@@ -20,6 +20,7 @@ interface UseSftpModalSessionParams {
     keySource?: "generated" | "imported";
     proxy?: NetcattyProxyConfig;
     jumpHosts?: NetcattyJumpHost[];
+    jumpMode?: 'proxy-tunnel' | 'relay-shell';
     sftpSudo?: boolean;
     legacyAlgorithms?: boolean;
   };
@@ -40,6 +41,7 @@ interface UseSftpModalSessionParams {
     keySource?: "generated" | "imported";
     proxy?: NetcattyProxyConfig;
     jumpHosts?: NetcattyJumpHost[];
+    jumpMode?: 'proxy-tunnel' | 'relay-shell';
     sudo?: boolean;
     legacyAlgorithms?: boolean;
   }) => Promise<string>;
@@ -128,6 +130,7 @@ export const useSftpModalSession = ({
       keySource: credentials.keySource,
       proxy: credentials.proxy,
       jumpHosts: credentials.jumpHosts,
+      jumpMode: credentials.jumpMode,
       sudo: credentials.sftpSudo,
       legacyAlgorithms: credentials.legacyAlgorithms,
     });
@@ -151,6 +154,7 @@ export const useSftpModalSession = ({
     credentials.keySource,
     credentials.proxy,
     credentials.jumpHosts,
+    credentials.jumpMode,
     credentials.sftpSudo,
     credentials.legacyAlgorithms,
     bumpSessionVersion,
@@ -246,6 +250,20 @@ export const useSftpModalSession = ({
     }
   }, [closeSftpSession, ensureSftp, listSftp, host.id, onClearSelection, t]);
 
+  const getSftpErrorMessage = useCallback(
+    (err: unknown, fallbackKey = "sftp.error.loadFailed"): string => {
+      if (err instanceof Error) {
+        const lower = err.message.toLowerCase();
+        if (lower.includes("relay-shell mode")) {
+          return t("sftp.error.relayShellNotSupported");
+        }
+        return err.message;
+      }
+      return t(fallbackKey);
+    },
+    [t],
+  );
+
   const loadFiles = useCallback(
     async (path: string, options?: { force?: boolean }) => {
       const requestId = ++loadSeqRef.current;
@@ -286,10 +304,7 @@ export const useSftpModalSession = ({
         }
 
         logger.error("Failed to load files", e);
-        toast.error(
-          e instanceof Error ? e.message : t("sftp.error.loadFailed"),
-          "SFTP",
-        );
+        toast.error(getSftpErrorMessage(e), "SFTP");
         setFiles([]);
       } finally {
         if (loadSeqRef.current === requestId) {
@@ -297,7 +312,18 @@ export const useSftpModalSession = ({
         }
       }
     },
-    [ensureSftp, host.id, isLocalSession, listLocalDir, listSftp, t, handleSessionError, files.length, onClearSelection],
+    [
+      ensureSftp,
+      host.id,
+      isLocalSession,
+      listLocalDir,
+      listSftp,
+      isSessionError,
+      handleSessionError,
+      files.length,
+      onClearSelection,
+      getSftpErrorMessage,
+    ],
   );
 
   useLayoutEffect(() => {
@@ -333,10 +359,7 @@ export const useSftpModalSession = ({
                 timestamp: Date.now(),
               });
             } catch (e) {
-              toast.error(
-                e instanceof Error ? e.message : t("sftp.error.loadFailed"),
-                "SFTP",
-              );
+              toast.error(getSftpErrorMessage(e), "SFTP");
             } finally {
               setLoading(false);
             }
@@ -347,9 +370,20 @@ export const useSftpModalSession = ({
         (async () => {
           const homePath = await getHomeDir();
           localHomeRef.current = homePath ?? null;
+
+          let sftpId: string;
+          try {
+            sftpId = await ensureSftp();
+          } catch (e) {
+            logger.error("[SFTP] Failed to initialize session", e);
+            toast.error(getSftpErrorMessage(e), "SFTP");
+            setFiles([]);
+            setLoading(false);
+            return;
+          }
+
           if (initialPath) {
             try {
-              const sftpId = await ensureSftp();
               const list = await listSftp(sftpId, initialPath);
               setCurrentPath(initialPath);
               setFiles(list);
@@ -359,15 +393,15 @@ export const useSftpModalSession = ({
               });
               setLoading(false);
               return;
-            } catch {
+            } catch (e) {
               logger.warn(
                 `[SFTP] Initial path ${initialPath} not accessible, falling back to home`,
+                e,
               );
             }
           }
 
           try {
-            const sftpId = await ensureSftp();
             const list = await listSftp(sftpId, homePath || "/");
             setCurrentPath(homePath || "/");
             setFiles(list);
@@ -376,10 +410,9 @@ export const useSftpModalSession = ({
               timestamp: Date.now(),
             });
             setLoading(false);
-          } catch {
-            logger.warn(`[SFTP] Home ${homePath} not accessible, using /`);
+          } catch (homeErr) {
+            logger.warn(`[SFTP] Home ${homePath} not accessible, using /`, homeErr);
             try {
-              const sftpId = await ensureSftp();
               const list = await listSftp(sftpId, "/");
               setCurrentPath("/");
               setFiles(list);
@@ -389,7 +422,8 @@ export const useSftpModalSession = ({
               });
             } catch (e) {
               logger.error("[SFTP] Failed to load root directory", e);
-              toast.error(t("sftp.error.loadFailed"), "SFTP");
+              toast.error(getSftpErrorMessage(e), "SFTP");
+              setFiles([]);
             } finally {
               setLoading(false);
             }
@@ -416,7 +450,7 @@ export const useSftpModalSession = ({
     onClearSelection,
     open,
     setCurrentPath,
-    t,
+    getSftpErrorMessage,
   ]);
 
   useEffect(() => {

@@ -69,6 +69,7 @@ export const useSftpHostCredentials = ({
         keySource: key?.source,
         proxy: proxyConfig,
         jumpHosts: jumpHosts && jumpHosts.length > 0 ? jumpHosts : undefined,
+        jumpMode: host.hostChain?.connectionMode === 'relay-shell' ? 'relay-shell' : undefined,
         sudo: host.sftpSudo,
       };
     },

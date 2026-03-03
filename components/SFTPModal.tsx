@@ -41,6 +41,7 @@ interface SFTPModalProps {
     keySource?: 'generated' | 'imported';
     proxy?: NetcattyProxyConfig;
     jumpHosts?: NetcattyJumpHost[];
+    jumpMode?: 'proxy-tunnel' | 'relay-shell';
     sftpSudo?: boolean;
     legacyAlgorithms?: boolean;
   };
