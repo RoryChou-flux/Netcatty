@@ -299,7 +299,7 @@ function init(deps) {
  * Regex that matches safe SSH identifiers (hostnames, usernames, ports).
  * Rejects shell metacharacters to prevent command injection.
  */
-const SAFE_SSH_IDENTIFIER = /^[a-zA-Z0-9._:@\[\]\-]+$/;
+const SAFE_SSH_IDENTIFIER = /^[a-zA-Z0-9._:@%\[\]\-]+$/;
 
 /**
  * Assert that a value is safe to embed in a shell command.
@@ -405,7 +405,15 @@ function scheduleRelayStartupCommand(stream, startupCommand) {
 
   stream.on("data", onData);
   stream.stderr?.on("data", onStderr);
-  timer = setTimeout(sendOnce, RELAY_STARTUP_DELAY_MS);
+  // Do not blindly inject commands on timeout. If inner SSH is still
+  // waiting for password/OTP, writing here can break authentication.
+  timer = setTimeout(() => {
+    if (!sent) {
+      log("Relay-shell startup command still waiting for inner prompt", {
+        delayMs: RELAY_STARTUP_DELAY_MS,
+      });
+    }
+  }, RELAY_STARTUP_DELAY_MS);
 
   return cleanup;
 }
@@ -1178,8 +1186,8 @@ async function startSSHSession(event, options) {
 
               // Write the ssh command into the relay shell
               stream.write(`${relayShellCommand}\n`);
-              // Relay-shell cannot know exact inner SSH readiness; try prompt detection
-              // first and keep a timeout fallback for non-standard prompts.
+              // Relay-shell cannot know exact inner SSH readiness; only send startup
+              // command after prompt detection to avoid interfering with auth prompts.
               const cancelRelayStartup = scheduleRelayStartupCommand(stream, options.startupCommand);
               stream.once("close", cancelRelayStartup);
 
