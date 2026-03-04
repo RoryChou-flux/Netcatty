@@ -318,7 +318,6 @@ export const useSftpModalSession = ({
       isLocalSession,
       listLocalDir,
       listSftp,
-      isSessionError,
       handleSessionError,
       files.length,
       onClearSelection,
