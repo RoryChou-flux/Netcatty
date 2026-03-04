@@ -44,6 +44,8 @@ export const ChainPanel: React.FC<ChainPanelProps> = ({
     onCancel,
 }) => {
     const { t } = useI18n();
+    const relaySingleHopLimitReached =
+        connectionMode === "relay-shell" && chainedHosts.length >= 1;
     return (
         <AsidePanel
             open={true}
@@ -63,7 +65,11 @@ export const ChainPanel: React.FC<ChainPanelProps> = ({
                         <p className="text-xs text-muted-foreground">
                             {t('hostDetails.chain.desc', { host: formLabel || formHostname })}
                         </p>
-                        <Button className="w-full h-10" onClick={() => { }}>
+                        <Button
+                            className="w-full h-10"
+                            onClick={() => { }}
+                            disabled={relaySingleHopLimitReached}
+                        >
                             <Plus size={14} className="mr-2" /> {t('hostDetails.chain.addHost')}
                         </Button>
                     </Card>
@@ -94,6 +100,11 @@ export const ChainPanel: React.FC<ChainPanelProps> = ({
                                 ? t('hostDetails.chain.mode.relayShell.desc')
                                 : t('hostDetails.chain.mode.proxyTunnel.desc')}
                         </p>
+                        {relaySingleHopLimitReached && (
+                            <p className="text-xs text-muted-foreground">
+                                {t('hostDetails.chain.mode.relayShell.limit')}
+                            </p>
+                        )}
                     </Card>
 
                     {/* Chain visualization */}
@@ -148,8 +159,15 @@ export const ChainPanel: React.FC<ChainPanelProps> = ({
                                 {availableHostsForChain.map((host) => (
                                     <button
                                         key={host.id}
-                                        className="w-full flex items-center gap-2 p-2 rounded-md hover:bg-secondary transition-colors text-left"
-                                        onClick={() => onAddHost(host.id)}
+                                        className={`w-full flex items-center gap-2 p-2 rounded-md transition-colors text-left ${relaySingleHopLimitReached
+                                            ? "opacity-50 cursor-not-allowed"
+                                            : "hover:bg-secondary"
+                                            }`}
+                                        onClick={() => {
+                                            if (relaySingleHopLimitReached) return;
+                                            onAddHost(host.id);
+                                        }}
+                                        disabled={relaySingleHopLimitReached}
                                     >
                                         <DistroAvatar host={host} fallback={host.label.slice(0, 2).toUpperCase()} className="h-8 w-8" />
                                         <div className="flex-1 min-w-0">

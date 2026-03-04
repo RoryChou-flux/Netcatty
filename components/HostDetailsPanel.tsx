@@ -237,7 +237,10 @@ const HostDetailsPanel: React.FC<HostDetailsPanelProps> = ({
     setForm((prev) => ({
       ...prev,
       hostChain: {
-        hostIds: prev.hostChain?.hostIds || [],
+        hostIds:
+          mode === "relay-shell"
+            ? (prev.hostChain?.hostIds || []).slice(0, 1)
+            : (prev.hostChain?.hostIds || []),
         connectionMode: mode === 'proxy-tunnel' ? undefined : mode,
       },
     }));
@@ -305,10 +308,14 @@ const HostDetailsPanel: React.FC<HostDetailsPanelProps> = ({
     }
 
     const chainIds = (form.hostChain?.hostIds || []).filter(Boolean);
+    const normalizedChainIds =
+      form.hostChain?.connectionMode === "relay-shell"
+        ? chainIds.slice(0, 1)
+        : chainIds;
     const cleanedHostChain =
-      chainIds.length > 0
+      normalizedChainIds.length > 0
         ? {
-            hostIds: chainIds,
+            hostIds: normalizedChainIds,
             connectionMode:
               form.hostChain?.connectionMode === "relay-shell"
                 ? "relay-shell"

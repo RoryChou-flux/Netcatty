@@ -361,7 +361,7 @@ function looksLikeShellPrompt(text) {
   return /[#$>%]\s*$/.test(last);
 }
 
-function scheduleRelayStartupCommand(stream, startupCommand) {
+function scheduleRelayStartupCommand(stream, startupCommand, sender, sessionId) {
   const command = typeof startupCommand === "string" ? startupCommand.trim() : "";
   if (!command) return () => { };
 
@@ -411,6 +411,13 @@ function scheduleRelayStartupCommand(stream, startupCommand) {
     if (!sent) {
       log("Relay-shell startup command still waiting for inner prompt", {
         delayMs: RELAY_STARTUP_DELAY_MS,
+      });
+      safeSend(sender, "netcatty:data", {
+        sessionId,
+        data:
+          "\r\n[relay-shell] Startup command was not auto-run because no shell prompt was detected yet.\r\n" +
+          "[relay-shell] Run it manually after login:\r\n" +
+          `${command}\r\n`,
       });
     }
   }, RELAY_STARTUP_DELAY_MS);
@@ -1027,6 +1034,11 @@ async function startSSHSession(event, options) {
 
     // Handle chain/proxy connections
     const isRelayShell = hasJumpHosts && options.jumpMode === "relay-shell";
+    if (isRelayShell && jumpHosts.length > 1) {
+      throw new Error(
+        "Relay-shell mode currently supports a single jump host. Switch to proxy-tunnel mode for multi-hop chains."
+      );
+    }
 
     if (isRelayShell) {
       // Relay-shell mode: SSH into the first jump host, then run `ssh` in its shell.
@@ -1188,7 +1200,12 @@ async function startSSHSession(event, options) {
               stream.write(`${relayShellCommand}\n`);
               // Relay-shell cannot know exact inner SSH readiness; only send startup
               // command after prompt detection to avoid interfering with auth prompts.
-              const cancelRelayStartup = scheduleRelayStartupCommand(stream, options.startupCommand);
+              const cancelRelayStartup = scheduleRelayStartupCommand(
+                stream,
+                options.startupCommand,
+                event.sender,
+                sessionId
+              );
               stream.once("close", cancelRelayStartup);
 
               // Resolved when relay shell is established; inner ssh may still fail later

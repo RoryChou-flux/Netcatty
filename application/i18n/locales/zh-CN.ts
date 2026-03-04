@@ -1219,6 +1219,7 @@ const zhCN: Messages = {
   'hostDetails.chain.mode.relayShell': '中继 Shell',
   'hostDetails.chain.mode.proxyTunnel.desc': '使用 SSH TCP 转发（direct-tcpip 通道）通过跳板机建立隧道。需要中继服务器启用 AllowTcpForwarding。',
   'hostDetails.chain.mode.relayShell.desc': '在中继主机的 Shell 中运行 ssh 命令以到达目标。即使 TCP 转发被禁用也可使用。此模式不支持 SFTP。',
+  'hostDetails.chain.mode.relayShell.limit': '中继 Shell 当前仅支持单跳主机链。多跳请切换为代理隧道模式。',
   'hostDetails.group.title': '新建分组',
   'hostDetails.group.general': '常规',
   'hostDetails.group.namePlaceholder': '分组名称',

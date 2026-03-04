@@ -841,6 +841,7 @@ const en: Messages = {
   'hostDetails.chain.mode.relayShell': 'Relay Shell',
   'hostDetails.chain.mode.proxyTunnel.desc': 'Uses SSH TCP forwarding (direct-tcpip channel) to tunnel through jump hosts. Requires AllowTcpForwarding on relay servers.',
   'hostDetails.chain.mode.relayShell.desc': 'Runs ssh command on the relay host\'s shell to reach the target. Works even when TCP forwarding is disabled. SFTP is not supported in this mode.',
+  'hostDetails.chain.mode.relayShell.limit': 'Relay Shell currently supports a single jump host. Switch to Proxy Tunnel for multi-hop chains.',
   'hostDetails.group.title': 'New Group',
   'hostDetails.group.general': 'General',
   'hostDetails.group.namePlaceholder': 'Group name',

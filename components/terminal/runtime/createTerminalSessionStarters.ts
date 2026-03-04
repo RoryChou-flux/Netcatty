@@ -493,7 +493,9 @@ export const createTerminalSessionStarters = (ctx: TerminalSessionStartersContex
       const commandToRun = ctx.startupCommand || ctx.host.startupCommand;
       if (commandToRun && !ctx.hasRunStartupCommandRef.current) {
         ctx.hasRunStartupCommandRef.current = true;
-        if (ctx.onCommandExecuted) {
+        const isRelayShell = ctx.host.hostChain?.connectionMode === "relay-shell";
+        // Relay-shell startup command is prompt-gated in the backend and may require manual run.
+        if (!isRelayShell && ctx.onCommandExecuted) {
           ctx.onCommandExecuted(commandToRun, ctx.host.id, ctx.host.label, ctx.sessionId);
         }
       }
