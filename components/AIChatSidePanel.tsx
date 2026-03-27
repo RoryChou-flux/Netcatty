@@ -56,6 +56,7 @@ interface AIChatSidePanelProps {
   deleteSession: (sessionId: string, scopeKey?: string) => void;
   updateSessionTitle: (sessionId: string, title: string) => void;
   updateSessionExternalSessionId: (sessionId: string, externalSessionId: string | undefined) => void;
+  retargetSessionScope: (sessionId: string, scope: AISessionScope) => void;
   addMessageToSession: (sessionId: string, message: ChatMessage) => void;
   updateLastMessage: (
     sessionId: string,
@@ -185,6 +186,7 @@ const AIChatSidePanelInner: React.FC<AIChatSidePanelProps> = ({
   deleteSession,
   updateSessionTitle,
   updateSessionExternalSessionId,
+  retargetSessionScope,
   addMessageToSession,
   updateLastMessage,
   updateMessageById,
@@ -290,10 +292,43 @@ const AIChatSidePanelInner: React.FC<AIChatSidePanelProps> = ({
   const activeSessionId = activeSession?.id ?? activeSessionIdForScope;
   const isStreaming = activeSessionId ? streamingSessionIds.has(activeSessionId) : false;
 
+  const shouldRetargetActiveSession = useMemo(() => {
+    if (!activeSession || scopeType !== 'terminal' || !scopeTargetId || !scopeHostIds?.length) {
+      return false;
+    }
+
+    if (activeSession.scope.type !== scopeType || activeSession.scope.targetId === scopeTargetId) {
+      return false;
+    }
+
+    return activeSession.scope.hostIds?.some((hostId) => scopeHostIds.includes(hostId)) ?? false;
+  }, [activeSession, scopeType, scopeTargetId, scopeHostIds]);
+
   useEffect(() => {
-    if (!activeSession || activeSessionIdForScope === activeSession.id) return;
-    setActiveSessionId(activeSession.id);
-  }, [activeSession, activeSessionIdForScope, setActiveSessionId]);
+    if (!activeSession) return;
+
+    if (shouldRetargetActiveSession) {
+      retargetSessionScope(activeSession.id, {
+        type: scopeType,
+        targetId: scopeTargetId,
+        hostIds: scopeHostIds,
+      });
+      return;
+    }
+
+    if (activeSessionIdForScope !== activeSession.id) {
+      setActiveSessionId(activeSession.id);
+    }
+  }, [
+    activeSession,
+    activeSessionIdForScope,
+    retargetSessionScope,
+    scopeHostIds,
+    scopeTargetId,
+    scopeType,
+    setActiveSessionId,
+    shouldRetargetActiveSession,
+  ]);
 
   // Restore agent selector from active session when scope changes
   useEffect(() => {
@@ -465,7 +500,13 @@ const AIChatSidePanelInner: React.FC<AIChatSidePanelProps> = ({
   /** Ensure a session exists for the current scope and return its ID. */
   const ensureSession = useCallback((): string => {
     if (activeSession && sessionsRef.current.some((session) => session.id === activeSession.id)) {
-      if (activeSessionIdForScope !== activeSession.id) {
+      if (shouldRetargetActiveSession) {
+        retargetSessionScope(activeSession.id, {
+          type: scopeType,
+          targetId: scopeTargetId,
+          hostIds: scopeHostIds,
+        });
+      } else if (activeSessionIdForScope !== activeSession.id) {
         setActiveSessionId(activeSession.id);
       }
       return activeSession.id;
@@ -474,7 +515,18 @@ const AIChatSidePanelInner: React.FC<AIChatSidePanelProps> = ({
     const session = createSession(scope, currentAgentId);
     setActiveSessionId(session.id);
     return session.id;
-  }, [activeSession, activeSessionIdForScope, scopeType, scopeTargetId, scopeHostIds, currentAgentId, createSession, setActiveSessionId]);
+  }, [
+    activeSession,
+    activeSessionIdForScope,
+    createSession,
+    currentAgentId,
+    retargetSessionScope,
+    scopeHostIds,
+    scopeTargetId,
+    scopeType,
+    setActiveSessionId,
+    shouldRetargetActiveSession,
+  ]);
 
   // -------------------------------------------------------------------
   // Main send handler (thin orchestrator)
