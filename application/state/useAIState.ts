@@ -66,22 +66,33 @@ export function cleanupOrphanedAISessions(activeTargetIds: Set<string>) {
     .map((session) => session.id);
 
   if (orphanedSessionIds.length > 0) {
-    cleanupAcpSessions(orphanedSessionIds);
-
     const orphanedSessionIdSet = new Set(orphanedSessionIds);
+
+    // Determine which sessions to preserve vs delete
+    const preservedIds = new Set<string>();
+    const deletedIds: string[] = [];
+    for (const session of currentSessions) {
+      if (!orphanedSessionIdSet.has(session.id)) continue;
+      // Only preserve remote terminal sessions with real hostIds
+      const isRestorable = session.scope.type === 'terminal'
+        && session.scope.hostIds?.length
+        && session.scope.hostIds.some((id) => !id.startsWith('local-') && !id.startsWith('serial-'));
+      if (isRestorable) {
+        preservedIds.add(session.id);
+      } else {
+        deletedIds.push(session.id);
+      }
+    }
+
+    // Only cleanup ACP sessions that are being deleted, not preserved ones
+    // (preserved sessions may be reused on reconnect — late cleanup could
+    // tear down a freshly started ACP conversation).
+    cleanupAcpSessions(deletedIds);
+
     const nextSessions = currentSessions
-      .filter((session) => {
-        if (!orphanedSessionIdSet.has(session.id)) return true;
-        // Only preserve remote terminal sessions with real hostIds — these can
-        // be restored via host-based matching on reconnect. Workspace sessions,
-        // local terminals (hostId = "local-*"), and serial sessions (hostId =
-        // "serial-*") use synthetic IDs that change on every open and would be
-        // permanently unreachable, wasting MAX_STORED_SESSIONS quota.
-        if (session.scope.type !== 'terminal' || !session.scope.hostIds?.length) return false;
-        return session.scope.hostIds.some((id) => !id.startsWith('local-') && !id.startsWith('serial-'));
-      })
+      .filter((session) => !orphanedSessionIdSet.has(session.id) || preservedIds.has(session.id))
       .map((session) => {
-        if (!orphanedSessionIdSet.has(session.id) || !session.externalSessionId) {
+        if (!preservedIds.has(session.id) || !session.externalSessionId) {
           return session;
         }
         // Drop transient ACP session handles so the next turn starts cleanly.
