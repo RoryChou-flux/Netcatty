@@ -152,6 +152,27 @@ function buildAcpHistoryMessages(messages: ChatMessage[]): Array<{ role: 'user' 
   });
 }
 
+function getSessionScopeMatchRank(
+  session: AISession,
+  scopeType: 'terminal' | 'workspace',
+  scopeTargetId?: string,
+  scopeHostIds?: string[],
+  activeTerminalTargetIds?: Set<string>,
+): number {
+  if (session.scope.type !== scopeType) return 0;
+  if (session.scope.targetId === scopeTargetId) return 2;
+
+  if (scopeType !== 'terminal' || !scopeHostIds?.length || !session.scope.hostIds?.length) {
+    return 0;
+  }
+
+  if (session.scope.targetId && activeTerminalTargetIds?.has(session.scope.targetId)) {
+    return 0;
+  }
+
+  return session.scope.hostIds.some((hostId) => scopeHostIds.includes(hostId)) ? 1 : 0;
+}
+
 // -------------------------------------------------------------------
 // Component
 // -------------------------------------------------------------------
@@ -227,21 +248,59 @@ const AIChatSidePanelInner: React.FC<AIChatSidePanelProps> = ({
 
 
   // Per-scope active session ID
-  const activeSessionId = activeSessionIdMap[scopeKey] ?? null;
-  const isStreaming = activeSessionId ? streamingSessionIds.has(activeSessionId) : false;
+  const activeSessionIdForScope = activeSessionIdMap[scopeKey] ?? null;
   const setActiveSessionId = useCallback((id: string | null) => {
     setActiveSessionIdForScope(scopeKey, id);
   }, [scopeKey, setActiveSessionIdForScope]);
 
-  // Restore agent selector from active session when scope changes
-  useEffect(() => {
-    if (activeSessionId) {
-      const session = sessions.find((s) => s.id === activeSessionId);
-      if (session) {
-        setCurrentAgentId(session.agentId);
+  const activeTerminalTargetIds = useMemo(() => {
+    const targetIds = new Set<string>();
+    for (const sessionScopeKey of Object.keys(activeSessionIdMap)) {
+      if (!sessionScopeKey.startsWith('terminal:')) continue;
+      const targetId = sessionScopeKey.slice('terminal:'.length);
+      if (!targetId || targetId === scopeTargetId) continue;
+      targetIds.add(targetId);
+    }
+    return targetIds;
+  }, [activeSessionIdMap, scopeTargetId]);
+
+  const historySessions = useMemo(
+    () =>
+      sessions
+        .map((session) => ({
+          session,
+          matchRank: getSessionScopeMatchRank(session, scopeType, scopeTargetId, scopeHostIds, activeTerminalTargetIds),
+        }))
+        .filter(({ matchRank }) => matchRank > 0)
+        .sort((a, b) => b.matchRank - a.matchRank || b.session.updatedAt - a.session.updatedAt)
+        .map(({ session }) => session),
+    [sessions, scopeType, scopeTargetId, scopeHostIds, activeTerminalTargetIds],
+  );
+
+  const activeSession = useMemo(() => {
+    if (activeSessionIdForScope) {
+      const session = sessions.find((s) => s.id === activeSessionIdForScope);
+      if (session && getSessionScopeMatchRank(session, scopeType, scopeTargetId, scopeHostIds, activeTerminalTargetIds) > 0) {
+        return session;
       }
     }
-  }, [scopeKey, activeSessionId, sessions]);
+    return historySessions[0] ?? null;
+  }, [sessions, activeSessionIdForScope, historySessions, scopeType, scopeTargetId, scopeHostIds, activeTerminalTargetIds]);
+
+  const activeSessionId = activeSession?.id ?? activeSessionIdForScope;
+  const isStreaming = activeSessionId ? streamingSessionIds.has(activeSessionId) : false;
+
+  useEffect(() => {
+    if (!activeSession || activeSessionIdForScope === activeSession.id) return;
+    setActiveSessionId(activeSession.id);
+  }, [activeSession, activeSessionIdForScope, setActiveSessionId]);
+
+  // Restore agent selector from active session when scope changes
+  useEffect(() => {
+    if (activeSession) {
+      setCurrentAgentId(activeSession.agentId);
+    }
+  }, [scopeKey, activeSession]);
 
   // Proactively sync terminal session metadata to main process whenever scope or sessions change
   useEffect(() => {
@@ -294,12 +353,6 @@ const AIChatSidePanelInner: React.FC<AIChatSidePanelProps> = ({
     [enableAgent, setExternalAgents],
   );
 
-  // Active session (scoped)
-  const activeSession = useMemo(
-    () => sessions.find((s) => s.id === activeSessionId) ?? null,
-    [sessions, activeSessionId],
-  );
-
   const messages = activeSession?.messages ?? [];
 
   // ── Export hook ──
@@ -344,15 +397,6 @@ const AIChatSidePanelInner: React.FC<AIChatSidePanelProps> = ({
   const handleAgentModelSelect = useCallback((modelId: string) => {
     setAgentModel(currentAgentId, modelId);
   }, [currentAgentId, setAgentModel]);
-
-  // Filtered sessions for history (matching current scope type)
-  const historySessions = useMemo(
-    () =>
-      sessions
-        .filter((s) => s.scope.type === scopeType && s.scope.targetId === scopeTargetId)
-        .sort((a, b) => b.updatedAt - a.updatedAt),
-    [sessions, scopeType, scopeTargetId],
-  );
 
   // -------------------------------------------------------------------
   // Handlers
@@ -420,14 +464,17 @@ const AIChatSidePanelInner: React.FC<AIChatSidePanelProps> = ({
 
   /** Ensure a session exists for the current scope and return its ID. */
   const ensureSession = useCallback((): string => {
-    if (activeSessionId && sessionsRef.current.some((session) => session.id === activeSessionId)) {
-      return activeSessionId;
+    if (activeSession && sessionsRef.current.some((session) => session.id === activeSession.id)) {
+      if (activeSessionIdForScope !== activeSession.id) {
+        setActiveSessionId(activeSession.id);
+      }
+      return activeSession.id;
     }
     const scope: AISessionScope = { type: scopeType, targetId: scopeTargetId, hostIds: scopeHostIds };
     const session = createSession(scope, currentAgentId);
     setActiveSessionId(session.id);
     return session.id;
-  }, [activeSessionId, scopeType, scopeTargetId, scopeHostIds, currentAgentId, createSession, setActiveSessionId]);
+  }, [activeSession, activeSessionIdForScope, scopeType, scopeTargetId, scopeHostIds, currentAgentId, createSession, setActiveSessionId]);
 
   // -------------------------------------------------------------------
   // Main send handler (thin orchestrator)

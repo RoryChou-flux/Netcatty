@@ -47,27 +47,45 @@ function cleanupAcpSessions(sessionIds: string[]) {
   }
 }
 
+function isScopeKeyActive(scopeKey: string, activeTargetIds: Set<string>) {
+  const separatorIndex = scopeKey.indexOf(':');
+  if (separatorIndex === -1) return true;
+
+  const targetId = scopeKey.slice(separatorIndex + 1);
+  if (!targetId) return true;
+
+  return activeTargetIds.has(targetId);
+}
+
 export function cleanupOrphanedAISessions(activeTargetIds: Set<string>) {
   const currentSessions = latestAISessionsSnapshot
     ?? localStorageAdapter.read<AISession[]>(STORAGE_KEY_AI_SESSIONS)
     ?? [];
-  const removedSessionIds = currentSessions
+  const orphanedSessionIds = currentSessions
     .filter((session) => session.scope.targetId && !activeTargetIds.has(session.scope.targetId))
     .map((session) => session.id);
 
-  if (removedSessionIds.length === 0) return;
+  if (orphanedSessionIds.length > 0) {
+    cleanupAcpSessions(orphanedSessionIds);
 
-  cleanupAcpSessions(removedSessionIds);
+    const orphanedSessionIdSet = new Set(orphanedSessionIds);
+    const nextSessions = currentSessions.map((session) => {
+      if (!orphanedSessionIdSet.has(session.id) || !session.externalSessionId) {
+        return session;
+      }
 
-  const removedSessionIdSet = new Set(removedSessionIds);
+      // Preserve visible history across reconnects, but drop transient ACP session
+      // handles so the next turn starts cleanly from the persisted transcript.
+      return { ...session, externalSessionId: undefined };
+    });
 
-  const nextSessions = currentSessions.filter((session) => {
-    if (!session.scope.targetId) return true;
-    return activeTargetIds.has(session.scope.targetId);
-  });
-  setLatestAISessionsSnapshot(nextSessions);
-  localStorageAdapter.write(STORAGE_KEY_AI_SESSIONS, pruneSessionsForStorage(nextSessions));
-  emitAIStateChanged(STORAGE_KEY_AI_SESSIONS);
+    const sessionsChanged = nextSessions.some((session, index) => session !== currentSessions[index]);
+    if (sessionsChanged) {
+      setLatestAISessionsSnapshot(nextSessions);
+      localStorageAdapter.write(STORAGE_KEY_AI_SESSIONS, pruneSessionsForStorage(nextSessions));
+      emitAIStateChanged(STORAGE_KEY_AI_SESSIONS);
+    }
+  }
 
   const activeSessionIdMap = latestAIActiveSessionMapSnapshot
     ?? localStorageAdapter.read<Record<string, string | null>>(STORAGE_KEY_AI_ACTIVE_SESSION_MAP)
@@ -75,11 +93,10 @@ export function cleanupOrphanedAISessions(activeTargetIds: Set<string>) {
   let activeSessionMapChanged = false;
   const nextActiveSessionIdMap = { ...activeSessionIdMap };
 
-  for (const [scopeKey, sessionId] of Object.entries(activeSessionIdMap)) {
-    if (sessionId && removedSessionIdSet.has(sessionId)) {
-      nextActiveSessionIdMap[scopeKey] = null;
-      activeSessionMapChanged = true;
-    }
+  for (const scopeKey of Object.keys(activeSessionIdMap)) {
+    if (isScopeKeyActive(scopeKey, activeTargetIds)) continue;
+    delete nextActiveSessionIdMap[scopeKey];
+    activeSessionMapChanged = true;
   }
 
   if (activeSessionMapChanged) {

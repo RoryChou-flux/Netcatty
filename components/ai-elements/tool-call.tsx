@@ -133,7 +133,7 @@ export const ToolCall = ({
           {args && Object.keys(args).length > 0 && (
             <div className="px-3 py-2">
               <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/30 mb-1">Arguments</div>
-              <pre className="text-[11px] font-mono text-muted-foreground/50 whitespace-pre-wrap break-all">
+              <pre className="max-h-64 overflow-auto text-[11px] font-mono text-muted-foreground/50 whitespace-pre [overflow-wrap:normal]">
                 {JSON.stringify(args, null, 2)}
               </pre>
             </div>
@@ -174,7 +174,7 @@ export const ToolCall = ({
             <div className="px-3 py-2 border-t border-border/20">
               <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/30 mb-1">Result</div>
               <pre className={cn(
-                'text-[11px] font-mono whitespace-pre-wrap break-all',
+                'max-h-64 overflow-auto text-[11px] font-mono whitespace-pre [overflow-wrap:normal]',
                 isError ? 'text-red-400/60' : 'text-muted-foreground/50',
               )}>
                 {typeof result === 'string' ? result : JSON.stringify(result, null, 2)}
