@@ -312,16 +312,12 @@ const AIChatSidePanelInner: React.FC<AIChatSidePanelProps> = ({
   useEffect(() => {
     if (!activeSession) return;
 
-    // If a restored session lost its ACP handle during orphan cleanup (reconnect
-    // mid-response) but is still marked as streaming, clear the stale state.
-    // Only applies to sessions that previously HAD an external session (ACP agents),
-    // not built-in Catty chats which never set externalSessionId.
-    if (activeSession.scope.targetId !== scopeTargetId
-      && streamingSessionIds.has(activeSession.id)) {
-      setStreamingForScope(activeSession.id, false);
-    }
-
     if (shouldRetargetActiveSession) {
+      // Clear stale streaming state — the session came from a disconnected
+      // terminal, so any in-flight response is dead.
+      if (streamingSessionIds.has(activeSession.id)) {
+        setStreamingForScope(activeSession.id, false);
+      }
       retargetSessionScope(activeSession.id, {
         type: scopeType,
         targetId: scopeTargetId,
