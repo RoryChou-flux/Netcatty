@@ -257,8 +257,8 @@ const AIChatSidePanelInner: React.FC<AIChatSidePanelProps> = ({
 
   const activeTerminalTargetIds = useMemo(() => {
     const targetIds = new Set<string>();
-    for (const sessionScopeKey of Object.keys(activeSessionIdMap)) {
-      if (!sessionScopeKey.startsWith('terminal:')) continue;
+    for (const [sessionScopeKey, sessionId] of Object.entries(activeSessionIdMap)) {
+      if (!sessionScopeKey.startsWith('terminal:') || !sessionId) continue;
       const targetId = sessionScopeKey.slice('terminal:'.length);
       if (!targetId || targetId === scopeTargetId) continue;
       targetIds.add(targetId);
@@ -331,7 +331,7 @@ const AIChatSidePanelInner: React.FC<AIChatSidePanelProps> = ({
       return;
     }
 
-    if (activeSessionIdForScope !== activeSession.id) {
+    if (isVisible && activeSessionIdForScope !== activeSession.id) {
       setActiveSessionId(activeSession.id);
     }
   }, [
