@@ -68,9 +68,8 @@ export function cleanupOrphanedAISessions(activeTargetIds: Set<string>) {
   if (orphanedSessionIds.length > 0) {
     const orphanedSessionIdSet = new Set(orphanedSessionIds);
 
-    // Determine which sessions to preserve vs delete
+    // Determine which sessions can be restored via host-based matching
     const preservedIds = new Set<string>();
-    const deletedIds: string[] = [];
     for (const session of currentSessions) {
       if (!orphanedSessionIdSet.has(session.id)) continue;
       // Only preserve remote terminal sessions with real hostIds
@@ -79,8 +78,6 @@ export function cleanupOrphanedAISessions(activeTargetIds: Set<string>) {
         && session.scope.hostIds.some((id) => !id.startsWith('local-') && !id.startsWith('serial-'));
       if (isRestorable) {
         preservedIds.add(session.id);
-      } else {
-        deletedIds.push(session.id);
       }
     }
 
