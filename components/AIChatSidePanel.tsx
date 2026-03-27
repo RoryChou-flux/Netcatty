@@ -312,7 +312,7 @@ const AIChatSidePanelInner: React.FC<AIChatSidePanelProps> = ({
   useEffect(() => {
     if (!activeSession) return;
 
-    if (shouldRetargetActiveSession) {
+    if (shouldRetargetActiveSession && isVisible) {
       // Clear stale streaming state — the session came from a disconnected
       // terminal, so any in-flight response is dead.
       if (streamingSessionIds.has(activeSession.id)) {
@@ -333,6 +333,7 @@ const AIChatSidePanelInner: React.FC<AIChatSidePanelProps> = ({
     activeSession,
     activeSessionIdForScope,
     retargetSessionScope,
+    isVisible,
     scopeHostIds,
     scopeTargetId,
     scopeType,

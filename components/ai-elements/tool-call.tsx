@@ -7,12 +7,8 @@ import { useI18n } from '../../application/i18n/I18nProvider';
 
 /**
  * Format tool result for display. Extracts stdout/stderr from structured
- * command results and unescapes control characters only in those fields.
+ * command results for terminal-like output.
  */
-function unescapeTerminalOutput(s: string): string {
-  return s.replace(/\\n/g, '\n').replace(/\\t/g, '\t').replace(/\\r/g, '\r');
-}
-
 function formatToolResult(result: unknown): string {
   let parsed = result;
 
@@ -21,7 +17,6 @@ function formatToolResult(result: unknown): string {
       const obj = JSON.parse(parsed);
       if (obj && typeof obj === 'object') parsed = obj;
     } catch {
-      // Plain string — return as-is, no unescape (could contain paths like C:\new)
       return parsed;
     }
   }
@@ -30,9 +25,8 @@ function formatToolResult(result: unknown): string {
     const obj = parsed as Record<string, unknown>;
     if (typeof obj.stdout === 'string' || typeof obj.stderr === 'string') {
       const parts: string[] = [];
-      // Only unescape stdout/stderr fields — these are known terminal output
-      if (typeof obj.stdout === 'string' && obj.stdout) parts.push(unescapeTerminalOutput(obj.stdout));
-      if (typeof obj.stderr === 'string' && obj.stderr) parts.push(unescapeTerminalOutput(obj.stderr));
+      if (typeof obj.stdout === 'string' && obj.stdout) parts.push(obj.stdout);
+      if (typeof obj.stderr === 'string' && obj.stderr) parts.push(obj.stderr);
       if (typeof obj.exitCode === 'number' && obj.exitCode !== 0) {
         parts.push(`exit code: ${obj.exitCode}`);
       }

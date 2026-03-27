@@ -657,7 +657,8 @@ export function useAIState() {
         const next = prev.map((session) => {
           if (session.id !== sessionId) return session;
           changed = true;
-          return { ...session, scope };
+          // Clear stale ACP handle — retarget may run before orphan cleanup
+          return { ...session, scope, externalSessionId: undefined };
         });
 
         if (!changed) return prev;
