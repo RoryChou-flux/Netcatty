@@ -313,9 +313,14 @@ const AIChatSidePanelInner: React.FC<AIChatSidePanelProps> = ({
     if (!activeSession) return;
 
     if (shouldRetargetActiveSession && isVisible) {
-      // Clear stale streaming state — the session came from a disconnected
-      // terminal, so any in-flight response is dead.
+      // Abort any in-flight request and clear stale streaming state — the session
+      // came from a disconnected terminal, so any active response is dead.
       if (streamingSessionIds.has(activeSession.id)) {
+        const controller = abortControllersRef.current.get(activeSession.id);
+        if (controller) {
+          controller.abort();
+          abortControllersRef.current.delete(activeSession.id);
+        }
         setStreamingForScope(activeSession.id, false);
       }
       retargetSessionScope(activeSession.id, {

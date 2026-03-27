@@ -84,10 +84,10 @@ export function cleanupOrphanedAISessions(activeTargetIds: Set<string>) {
       }
     }
 
-    // Only cleanup ACP sessions that are being deleted, not preserved ones
-    // (preserved sessions may be reused on reconnect — late cleanup could
-    // tear down a freshly started ACP conversation).
-    cleanupAcpSessions(deletedIds);
+    // Cleanup ACP sessions for all orphans (both deleted and preserved).
+    // Preserved sessions will get a new externalSessionId on next use,
+    // so cleaning the old one is safe and prevents subprocess leaks.
+    cleanupAcpSessions(orphanedSessionIds);
 
     const nextSessions = currentSessions
       .filter((session) => !orphanedSessionIdSet.has(session.id) || preservedIds.has(session.id))
