@@ -6,12 +6,14 @@ import { Badge } from '../ui/badge';
 import { useI18n } from '../../application/i18n/I18nProvider';
 
 /**
- * Format tool result for display. Extracts text content and
- * converts escaped newlines to real line breaks for terminal-like output.
+ * Format tool result for display. Extracts stdout/stderr from structured
+ * command results and unescapes control characters only in those fields.
  */
-function formatToolResult(result: unknown): string {
-  const unescape = (s: string) => s.replace(/\\n/g, '\n').replace(/\\t/g, '\t').replace(/\\r/g, '\r');
+function unescapeTerminalOutput(s: string): string {
+  return s.replace(/\\n/g, '\n').replace(/\\t/g, '\t').replace(/\\r/g, '\r');
+}
 
+function formatToolResult(result: unknown): string {
   let parsed = result;
 
   if (typeof parsed === 'string') {
@@ -19,7 +21,8 @@ function formatToolResult(result: unknown): string {
       const obj = JSON.parse(parsed);
       if (obj && typeof obj === 'object') parsed = obj;
     } catch {
-      return unescape(parsed);
+      // Plain string — return as-is, no unescape (could contain paths like C:\new)
+      return parsed;
     }
   }
 
@@ -27,13 +30,14 @@ function formatToolResult(result: unknown): string {
     const obj = parsed as Record<string, unknown>;
     if (typeof obj.stdout === 'string' || typeof obj.stderr === 'string') {
       const parts: string[] = [];
-      if (typeof obj.stdout === 'string' && obj.stdout) parts.push(unescape(obj.stdout));
-      if (typeof obj.stderr === 'string' && obj.stderr) parts.push(unescape(obj.stderr));
+      // Only unescape stdout/stderr fields — these are known terminal output
+      if (typeof obj.stdout === 'string' && obj.stdout) parts.push(unescapeTerminalOutput(obj.stdout));
+      if (typeof obj.stderr === 'string' && obj.stderr) parts.push(unescapeTerminalOutput(obj.stderr));
       if (parts.length > 0) return parts.join('\n');
     }
   }
 
-  if (typeof parsed === 'string') return unescape(parsed);
+  if (typeof parsed === 'string') return parsed;
   return JSON.stringify(parsed, null, 2);
 }
 
