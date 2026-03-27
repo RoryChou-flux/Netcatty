@@ -360,14 +360,12 @@ const AIChatSidePanelInner: React.FC<AIChatSidePanelProps> = ({
   }, [scopeKey, activeSession]);
 
   // Proactively sync terminal session metadata to main process whenever scope or sessions change
-  // Only sync from visible panels to prevent hidden panels from overwriting MCP scope
   useEffect(() => {
-    if (!isVisible) return;
     const bridge = getNetcattyBridge();
     if (bridge?.aiMcpUpdateSessions) {
       void bridge.aiMcpUpdateSessions(terminalSessions, activeSessionId ?? undefined);
     }
-  }, [isVisible, terminalSessions, scopeKey, activeSessionId]);
+  }, [terminalSessions, scopeKey, activeSessionId]);
 
   // Sync provider configs to main process so it can decrypt API keys server-side.
   // Keys stay encrypted in transit; main process decrypts only when making HTTP requests.
