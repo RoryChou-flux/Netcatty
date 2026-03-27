@@ -33,6 +33,9 @@ function formatToolResult(result: unknown): string {
       // Only unescape stdout/stderr fields — these are known terminal output
       if (typeof obj.stdout === 'string' && obj.stdout) parts.push(unescapeTerminalOutput(obj.stdout));
       if (typeof obj.stderr === 'string' && obj.stderr) parts.push(unescapeTerminalOutput(obj.stderr));
+      if (typeof obj.exitCode === 'number' && obj.exitCode !== 0) {
+        parts.push(`exit code: ${obj.exitCode}`);
+      }
       if (parts.length > 0) return parts.join('\n');
     }
   }

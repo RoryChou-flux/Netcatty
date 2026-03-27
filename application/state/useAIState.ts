@@ -72,13 +72,13 @@ export function cleanupOrphanedAISessions(activeTargetIds: Set<string>) {
     const nextSessions = currentSessions
       .filter((session) => {
         if (!orphanedSessionIdSet.has(session.id)) return true;
-        // Only preserve terminal sessions with hostIds — these can be restored
-        // via host-based matching on reconnect. Workspace, local, and serial
-        // sessions generate fresh IDs each time and would be permanently
-        // unreachable, wasting MAX_STORED_SESSIONS quota.
-        return session.scope.type === 'terminal'
-          && session.scope.hostIds
-          && session.scope.hostIds.length > 0;
+        // Only preserve remote terminal sessions with real hostIds — these can
+        // be restored via host-based matching on reconnect. Workspace sessions,
+        // local terminals (hostId = "local-*"), and serial sessions (hostId =
+        // "serial-*") use synthetic IDs that change on every open and would be
+        // permanently unreachable, wasting MAX_STORED_SESSIONS quota.
+        if (session.scope.type !== 'terminal' || !session.scope.hostIds?.length) return false;
+        return session.scope.hostIds.some((id) => !id.startsWith('local-') && !id.startsWith('serial-'));
       })
       .map((session) => {
         if (!orphanedSessionIdSet.has(session.id) || !session.externalSessionId) {
