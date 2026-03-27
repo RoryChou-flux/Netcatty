@@ -301,11 +301,23 @@ const AIChatSidePanelInner: React.FC<AIChatSidePanelProps> = ({
       return false;
     }
 
+    // Don't retarget sessions that are actively owned by another terminal
+    if (activeSession.scope.targetId && activeTerminalTargetIds.has(activeSession.scope.targetId)) {
+      return false;
+    }
+
     return activeSession.scope.hostIds?.some((hostId) => scopeHostIds.includes(hostId)) ?? false;
-  }, [activeSession, scopeType, scopeTargetId, scopeHostIds]);
+  }, [activeSession, scopeType, scopeTargetId, scopeHostIds, activeTerminalTargetIds]);
 
   useEffect(() => {
     if (!activeSession) return;
+
+    // If a restored session has no ACP handle but is still marked as streaming
+    // (e.g., reconnect happened mid-response), clear the stale streaming state
+    // so the user can send new messages.
+    if (!activeSession.externalSessionId && streamingSessionIds.has(activeSession.id)) {
+      setStreamingForScope(activeSession.id, false);
+    }
 
     if (shouldRetargetActiveSession) {
       retargetSessionScope(activeSession.id, {
@@ -327,7 +339,9 @@ const AIChatSidePanelInner: React.FC<AIChatSidePanelProps> = ({
     scopeTargetId,
     scopeType,
     setActiveSessionId,
+    setStreamingForScope,
     shouldRetargetActiveSession,
+    streamingSessionIds,
   ]);
 
   // Restore agent selector from active session when scope changes

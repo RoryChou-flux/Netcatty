@@ -69,17 +69,27 @@ export function cleanupOrphanedAISessions(activeTargetIds: Set<string>) {
     cleanupAcpSessions(orphanedSessionIds);
 
     const orphanedSessionIdSet = new Set(orphanedSessionIds);
-    const nextSessions = currentSessions.map((session) => {
-      if (!orphanedSessionIdSet.has(session.id) || !session.externalSessionId) {
-        return session;
-      }
+    const nextSessions = currentSessions
+      .filter((session) => {
+        if (!orphanedSessionIdSet.has(session.id)) return true;
+        // Only preserve terminal sessions with hostIds — these can be restored
+        // via host-based matching on reconnect. Workspace, local, and serial
+        // sessions generate fresh IDs each time and would be permanently
+        // unreachable, wasting MAX_STORED_SESSIONS quota.
+        return session.scope.type === 'terminal'
+          && session.scope.hostIds
+          && session.scope.hostIds.length > 0;
+      })
+      .map((session) => {
+        if (!orphanedSessionIdSet.has(session.id) || !session.externalSessionId) {
+          return session;
+        }
+        // Drop transient ACP session handles so the next turn starts cleanly.
+        return { ...session, externalSessionId: undefined };
+      });
 
-      // Preserve visible history across reconnects, but drop transient ACP session
-      // handles so the next turn starts cleanly from the persisted transcript.
-      return { ...session, externalSessionId: undefined };
-    });
-
-    const sessionsChanged = nextSessions.some((session, index) => session !== currentSessions[index]);
+    const sessionsChanged = nextSessions.length !== currentSessions.length
+      || nextSessions.some((session, index) => session !== currentSessions[index]);
     if (sessionsChanged) {
       setLatestAISessionsSnapshot(nextSessions);
       localStorageAdapter.write(STORAGE_KEY_AI_SESSIONS, pruneSessionsForStorage(nextSessions));
