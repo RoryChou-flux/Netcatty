@@ -313,8 +313,8 @@ const AIChatSidePanelInner: React.FC<AIChatSidePanelProps> = ({
     if (!activeSession) return;
 
     if (shouldRetargetActiveSession && isVisible) {
-      // Abort any in-flight request and clear stale streaming state — the session
-      // came from a disconnected terminal, so any active response is dead.
+      // Full cleanup of any in-flight work — the session came from a disconnected
+      // terminal, so any active response, pending approvals, or exec is dead.
       if (streamingSessionIds.has(activeSession.id)) {
         const controller = abortControllersRef.current.get(activeSession.id);
         if (controller) {
@@ -322,6 +322,10 @@ const AIChatSidePanelInner: React.FC<AIChatSidePanelProps> = ({
           abortControllersRef.current.delete(activeSession.id);
         }
         setStreamingForScope(activeSession.id, false);
+        clearAllPendingApprovals(activeSession.id);
+        const bridge = getNetcattyBridge();
+        bridge?.aiCattyCancelExec?.(activeSession.id);
+        bridge?.aiAcpCancel?.('', activeSession.id);
       }
       retargetSessionScope(activeSession.id, {
         type: scopeType,
@@ -356,12 +360,14 @@ const AIChatSidePanelInner: React.FC<AIChatSidePanelProps> = ({
   }, [scopeKey, activeSession]);
 
   // Proactively sync terminal session metadata to main process whenever scope or sessions change
+  // Only sync from visible panels to prevent hidden panels from overwriting MCP scope
   useEffect(() => {
+    if (!isVisible) return;
     const bridge = getNetcattyBridge();
     if (bridge?.aiMcpUpdateSessions) {
       void bridge.aiMcpUpdateSessions(terminalSessions, activeSessionId ?? undefined);
     }
-  }, [terminalSessions, scopeKey, activeSessionId]);
+  }, [isVisible, terminalSessions, scopeKey, activeSessionId]);
 
   // Sync provider configs to main process so it can decrypt API keys server-side.
   // Keys stay encrypted in transit; main process decrypts only when making HTTP requests.
