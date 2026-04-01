@@ -521,6 +521,13 @@ function App({ settings }: { settings: SettingsState }) {
       if (binding.category === 'sftp') {
         continue;
       }
+      if (
+        binding.action === 'closeTab' &&
+        target instanceof HTMLElement &&
+        !!target.closest?.('[data-hotkey-close-tab="true"]')
+      ) {
+        return;
+      }
       const terminalActions = ['copy', 'paste', 'selectAll', 'clearBuffer', 'searchTerminal'];
       if (terminalActions.includes(binding.action)) {
         if (isTerminalElement) {
