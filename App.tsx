@@ -487,6 +487,32 @@ function App({ settings }: { settings: SettingsState }) {
   const _handleGlobalHotkeyKeyDown = useEffectEvent((e: KeyboardEvent) => {
     const isMac = hotkeyScheme === 'mac';
     const target = e.target as HTMLElement;
+    const openDialogs = Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"][data-state="open"]'));
+    const topmostOpenDialog = openDialogs[openDialogs.length - 1] ?? null;
+    const closeTabBinding = keyBindings.find((binding) => binding.action === 'closeTab');
+    const closeTabKeyStr = closeTabBinding ? (isMac ? closeTabBinding.mac : closeTabBinding.pc) : null;
+    const isCloseTabHotkey = closeTabKeyStr ? matchesKeyBinding(e, closeTabKeyStr, isMac) : false;
+    const dialogHotkeyScope =
+      target instanceof HTMLElement
+        ? target.closest?.('[data-hotkey-close-tab="true"]')
+        : null;
+
+    if (isCloseTabHotkey && dialogHotkeyScope) {
+      return;
+    }
+
+    if (isCloseTabHotkey && topmostOpenDialog) {
+      e.preventDefault();
+      e.stopPropagation();
+      topmostOpenDialog.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'Escape',
+        code: 'Escape',
+        bubbles: true,
+        cancelable: true,
+      }));
+      return;
+    }
+
     const isFormElement = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
     const isMonacoElement =
       target instanceof HTMLElement &&
@@ -520,13 +546,6 @@ function App({ settings }: { settings: SettingsState }) {
       if (HOTKEY_DEBUG) console.log('[Hotkeys] Matched binding:', binding.action, keyStr);
       if (binding.category === 'sftp') {
         continue;
-      }
-      if (
-        binding.action === 'closeTab' &&
-        target instanceof HTMLElement &&
-        !!target.closest?.('[data-hotkey-close-tab="true"]')
-      ) {
-        return;
       }
       const terminalActions = ['copy', 'paste', 'selectAll', 'clearBuffer', 'searchTerminal'];
       if (terminalActions.includes(binding.action)) {
